@@ -1,0 +1,259 @@
+---
+title: "Setting parameter values"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r start, message=TRUE, warning=TRUE, include=FALSE}
+library(tidyverse)
+library(EnvStats)
+library(optimx)
+
+rm(list=ls())
+theme_set(theme_bw(base_size=14))
+stage.cols = c(seed="springgreen4",juv="blue3",flrg="magenta3")
+place.cols = c(Cool ="#175D71" , Warm = "#98463C", Avg = "#D48B47")
+
+sizes = c(seed=1,juv=8,flrg=10)
+```
+
+#### 1) survival function parameters
+```{r surv_fun}
+source("VR.Functions/logit2prob.R")
+source("VR.Functions/survival_fun.R")
+source("VR.Functions/ParamVals.R")
+
+# look at survival across a range of regional climate values
+surv.clim = data.frame(clim = seq(-20,20,by=0.1),
+                       seed=NA,
+                       juv=NA,
+                       flrg=NA)
+
+for(i in 1:nrow(surv.clim)){
+  
+    surv_params$clim = surv.clim$clim[i]
+    s.rates = do.call(survival_fun,surv_params)
+    surv.clim[i,2:4]=s.rates
+  
+}
+
+plot.df = pivot_longer(surv.clim,cols = !clim, names_to = "stage",values_to = "s.rate")
+
+ggplot(plot.df,aes(x=clim,y=s.rate,color=stage))+
+  geom_line(linewidth=1.5)+
+  scale_color_manual(values=stage.cols) +scale_y_continuous(limits = c(0,1))+
+  labs(title="Survival curves")
+
+rm(i)
+```
+
+2) growth function parameters
+```{r growth_fun}
+source("VR.Functions/growth_fun.R")
+source("VR.Functions/ParamVals.R")
+
+# look at survival across a range of regional climate values
+grow.clim = data.frame(clim = seq(-15,15,by=0.1),
+                       seed=NA,
+                       juv=NA)
+
+for(i in 1:nrow(grow.clim)){
+  
+    growth_params$clim = grow.clim$clim[i]
+    g.rates = do.call(growth_fun,growth_params)
+    grow.clim[i,2:3]=g.rates
+  
+}
+
+plot.df = pivot_longer(grow.clim,cols = !clim, names_to = "stage",values_to = "g.rate")
+ggplot(plot.df,aes(x=clim,y=g.rate,color=stage))+
+  geom_line(linewidth=1.5)+
+  scale_color_manual(values=stage.cols,labels=c("juv to flrg","seed to juv")) + 
+  scale_y_continuous(limits=c(0,1))+
+  ggtitle("Growth curves")
+
+rm(i)
+```
+
+#### Look at growth fun across range of clim var, asp.eff, asp.mag ####
+```{r more_growthFun}
+# 
+# growth_df = expand.grid(asp.effect = c(-1,0,1),
+#                         asp.mag = seq(0,5,by=1),
+#                         clim = rnorm(n=1000,sd=3),
+#                         seed = NA, juv = NA)
+#   
+# for(i in 1:nrow(growth_df)){
+#   
+#   growth_df[i,c('seed','juv')] = growth_fun(sizes = growth_params$sizes,
+#                  max.growth.rates = growth_params$max.growth.rates,
+#                  min.growth.rates = growth_params$min.growth.rates,
+#                  G_2 = growth_params$G_2,
+#                  G_3 = growth_params$G_3,
+#                  asp.mag = growth_df$asp.mag[i],
+#                  asp.effect = growth_df$asp.effect[i],
+#                  clim = growth_df$clim[i])
+#   
+# }
+#   
+# ggplot(growth_df,aes(x=clim,y=seed,color=as.factor(asp.effect)))+
+#   geom_line()+
+#   geom_vline(xintercept=0)+
+#   facet_wrap(~asp.mag)+
+#   theme_bw()+
+#   scale_y_continuous(limits = c(0,1))
+# 
+# ggplot(growth_df,aes(x=clim,y=juv,color=as.factor(asp.effect)))+
+#   geom_line()+
+#   geom_vline(xintercept=0)+
+#   facet_wrap(~asp.mag)+
+#   theme_bw()+
+#   scale_y_continuous(limits = c(0,1))
+
+```
+
+3) Seed number: To find the optimal seed number, build a mx with the survival and growth rates based on parameters in the two chunks above, then use the optim function to find the optimal seed number that gets lambda ~1.03
+```{r seednum}
+source("VR.Functions/SG_mx_fun.R")
+source("VR.Functions/seednum_fun.R")
+source("VR.Functions/ParamVals.R")
+
+growth_params$asp.effect = surv_params$asp.effect = 1
+growth_params$asp.mag = surv_params$asp.mag = 0
+
+growth.rates = do.call(growth_fun,growth_params)
+surv.rates = do.call(survival_fun,surv_params)
+
+seed_df = expand.grid(move.rate = seq(0,0.5,by=0.25), 
+                      aspect.effect = c(-1,0,1),
+                      asp.mag = 0:20,
+                      seeds=NA)
+
+for(i in 1:nrow(seed_df)){
+  
+  growth_params$asp.effect = surv_params$asp.effect = seed_df$aspect.effect[i]
+  growth_params$asp.mag = surv_params$asp.mag = seed_df$asp.mag[i]
+
+  growth.rates = do.call(growth_fun,growth_params)
+  surv.rates = do.call(survival_fun,surv_params)
+  
+  # Get survival/growth matrix
+  sg.mx = sg_mx_fun(surv.rates = surv.rates,growth.rates = growth.rates)
+  
+  # Run seednum_fun through optim function to fund the seed number that gets a lambda value of around 1.01
+  seeds.optim = stats::optim(par = 100, fn = basic_seeds_fun, method = "L-BFGS-B", lower=0, upper=10000000, control = list(factr = 1e-15))
+  
+  # Save that seed number to the global environment
+  seed_df$seeds[i] = round(seeds.optim$par)
+  
+  sg.mx[1,3] <- round(seeds.optim$par)*P.flr*surv.rates["flrg"]
+  Re(eigen(sg.mx)$values[1])
+
+  }
+
+write_csv(seed_df,"VR.functions/fecundity.csv")
+```
+
+4) 
+```{r subpop.lams}
+source("VR.Functions/subpop_mx_fun.R")
+source("VR.Functions/ParamVals.R")
+fec_df = read_csv("VR.Functions/fecundity.csv")
+
+clim=0
+asp.effect = 1
+asp.mag = 0
+years = 500
+pop.vec = rep(100,3)
+seeds = mean(fec_df$seeds[fec_df$asp.mag==0])
+
+mx = subpop_mx_fun(surv_params = surv_params, growth_params = growth_params, seeds=seeds);mx
+round(mx,4)
+
+Re(eigen(mx)$values[1])
+```
+
+
+```{r subpop.lams}
+
+out_df = data.frame(year = 0:years,
+                    s1 = NA,
+                    s2 = NA,
+                    s3 = NA,
+                    total = NA,
+                    lam = NA)
+out_df[1,2:4] = pop.vec
+out_df$total[1] = sum(pop.vec)
+
+for(yr in 1:years){
+
+  pop.vec = mx%*%pop.vec
+  row.i = which(out_df$year==yr)
+
+  out_df[row.i,2:4] = pop.vec
+  out_df$total[row.i] = sum(pop.vec)
+  out_df$lam[row.i] = out_df$total[row.i]/out_df$total[row.i-1]
+
+
+}
+
+plot_df = out_df %>%
+  pivot_longer(!year) %>%
+  filter(name!='lam')
+
+ggplot(filter(plot_df,year>-1),aes(x=year,y=value,color=name))+
+  geom_point()
+```
+
+
+#### Look at survival fun across range of clim var, asp.eff, asp.mag ####
+```{r more_growthFun}
+# 
+# surv_df = expand.grid(asp.effect = c(-1,0,1),
+#                       asp.mag = c(0,1,5),
+#                       clim = rnorm(n=1000,sd=3),
+#                       seed = NA, juv = NA,flrg=NA)
+#   
+# for(i in 1:nrow(surv_df)){
+#   
+#   surv_df[i,c('seed','juv',"flrg")] = 
+#     survival_fun(sizes = surv_params$sizes,
+#                  max.survival.rates = surv_params$max.survival.rates,
+#                  min.survival.rates = surv_params$min.survival.rates,
+#                  S_2 = surv_params$S_2,
+#                  S_3 = surv_params$S_3,
+#                  asp.mag = surv_df$asp.mag[i],
+#                  asp.effect = surv_df$asp.effect[i],
+#                  clim = surv_df$clim[i])
+#   
+# }
+# 
+# surv_df = surv_df %>% 
+#   mutate(place.name = case_when(asp.effect==-1~"Cool",
+#                                 asp.effect==0~"Avg",
+#                                 asp.effect==1~"Warm"))
+# 
+# ggplot(surv_df,aes(x=clim,y=seed,color=place.name))+
+#   geom_line()+
+#   geom_vline(xintercept=0)+
+#   facet_wrap(~asp.mag)+
+#   theme_bw()+
+#   scale_color_manual(values=place.cols)
+# 
+# ggplot(surv_df,aes(x=clim,y=juv,color=as.factor(asp.effect)))+
+#   geom_line()+
+#   geom_vline(xintercept=0)+
+#   facet_wrap(~asp.mag)+
+#   theme_bw()
+# 
+# ggplot(surv_df,aes(x=clim,y=flrg,color=as.factor(asp.effect)))+
+#   geom_line()+
+#   geom_vline(xintercept=0)+
+#   facet_wrap(~asp.mag)+
+#   theme_bw()
+
+```
+
