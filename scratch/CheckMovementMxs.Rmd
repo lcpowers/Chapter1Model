@@ -1,0 +1,103 @@
+---
+date: "2024-10-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+rm(list = ls())
+source("VR.Functions/ParamVals.R")
+source("VR.Functions/subpop_mx_fun.R")
+n.subpops=2
+```
+
+### Movement matrix
+```{r movementmx}
+move.mx = matrix(data = 0,nrow=n.subpops*3, ncol=n.subpops*3)
+start.cells = seq(1,(1+2*n.subpops),by=3)
+
+for(i in start.cells){
+  
+  # get current start cell. This is the row that will be filled in in this loop
+  
+  # Get the other start cell values. These columns will be filled in in this loop
+  other = setdiff(start.cells,i)
+  
+  for(j in other){
+    
+    move.mx[i,j] = round(runif(1,min=0,max=0.1),2)
+    
+  }
+  move.mx[i,i] = 1-sum(move.mx[i,])
+} 
+
+## add ones to the position along the diagonal that are still = 0
+move.mx[move.mx==0] = 1
+
+```
+
+### Pop matrix before movement
+```{r pop.mx}
+# Build the full population mx
+asp.effect = 1
+pop.mx = matrix(data = 0,nrow=n.subpops*3, ncol=n.subpops*3)
+for(n in 1:n.subpops){
+  
+  # Add subpop asp.effect to parameters
+  surv_params$asp.effect = growth_params$asp.effect = asp.effect
+  
+  # Create sub-population matrix
+  subpop.mx = subpop_mx_fun(surv_params = surv_params,
+                            growth_params = growth_params,
+                            seeds = 1000)
+  
+  
+  
+  
+  # put subpopulation MX into full population MX
+  start.cell = start.cells[n]
+  pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
+
+  rm(subpop.mx)
+} # End subpop loop
+
+pop.mx = round(pop.mx,2)
+pop.mx
+```
+
+### Multiplying move.mx%*%pop.mx
+```{r}
+move.mx*pop.mx
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+
+
+mx = matrix(data=c(0,    0,      9,
+                   0.05,  0.35,  0,
+                   0,     0.15, 0.9),
+            byrow=T,nrow=3)
+Re(eigen(mx)$values[1])
+
+pop.vec = c(100,100,100)
+pop.vec <- mx%*%pop.vec;pop.vec
+
+```
+
