@@ -15,6 +15,10 @@ rm(list=ls())
 
 # Packages
 library(tidyverse)
+library(parallel)
+library(doParallel)
+library(foreach)
+library(EnvStats)
 
 # Plotting
 theme_set(theme_bw(base_size=14))
@@ -136,88 +140,167 @@ write_csv(seed_df,"ModelFunctions/fecundity.csv")
 ### VERSION 2: Finding seed # (to set F cell) based on magnitude and direction of aspect effect PLUS LONG TERM LAMBDA
 ```{r seednumbers}
 
-seed_df <- expand.grid(asp.mag = seq(0,20,20),
-                       clim.sd = seq(0,20,20),
-                       seeds=NA)
-
 n.subpops=2
 asp.effects = c(-1,1)
 burn.in = 50
-sim.years = 500
+sim.years = 200
 years <- burn.in + sim.years
 start.cells = F.rows = seq(1,n.subpops*3,by=3)
 
+asp.mags =  seq(0,30,2)
+clim.sds = seq(0,30,2)
 
-for(i in 1:nrow(seed_df)){
-  
-  # Get asp magnitude and climate SD for the current loop
-  asp.mag.i <- seed_df$asp.mag[i]
-  clim.sd.i <- seed_df$clim.sd[i]
-  # Set Seeds # = 0 and x = 1
-  x <- 1;seeds <- 0
-    
-  while(x>0.0005){
-  
-      annual.df <- data.frame(yr=1:years, lam=NA)
+cores = detectCores()
+cl = makeCluster(20)
+registerDoParallel(cl = cl)
+
+seed_df_coarse <- 
+  foreach(asp.mag.i = asp.mags, .combine=rbind, .packages=c("tidyverse","EnvStats")) %:% 
+    foreach(clim.sd.i = clim.sds, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
       
+    # Starting values for while loop
+    x <- 1;seeds <- 0
+
+    while(x>0.0005){
+
+      seeds <- seeds + 10
+
+      annual.df <- data.frame(yr=1:years, lam=NA)
+
       growth_params.i <- growth_params
       surv_params.i <- surv_params
       growth_params.i$asp.mag <- surv_params.i$asp.mag <- asp.mag.i
 
-      seeds = seeds + exp(asp.mag.i)
-      
       for(yr in 1:years){
-        
+
         clim.yr <- rnorm(1,sd=clim.sd.i)
-        
+
         growth_params.i$clim <- surv_params.i$clim <- clim.yr
-        
+
         # Initiate a full population MX for current year
         pop.mx <- matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
-        
+
         # Build the full population mx
         for(n in 1:n.subpops){
-      
+
           # Add subpop asp.effect to parameters
           surv_params.i$asp.effect <- growth_params.i$asp.effect <- asp.effects[n]
-      
+
           # Create sub-population matrix
           subpop.mx = subpop_mx_fun(surv_params = surv_params.i,
                                     growth_params = growth_params.i,
                                     seeds.in = seeds)
-          
+
           start.cell = start.cells[n]
           pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
           rm(subpop.mx)
         }
-        
+
         lam <- Re(eigen(pop.mx)$values[1])
         annual.df$lam[yr] <- lam
       }
-    
-      annual.df <- filter(annual.df,yr>burn.in)
+
+      annual.df <- filter(annual.df, yr>burn.in)
       lt.lam <- geoMean(annual.df$lam)
-      x <- (1.005-lt.lam)^2
-      print(seeds)
+      x <- (1.0005-lt.lam)^2
+
       }
-  
-  seed_df$seeds[i] <- seeds
-  
+
+    # Create output dataframe for this row
+    tmp.df = data.frame(asp.mag = asp.mag.i,
+                        clim.sd = clim.sd.i,
+                        seeds = seeds)
+    return(tmp.df)
   }
+
+stopCluster(cl)
+write_csv(seed_df_coarse,paste0("seeds_coarse_",round(Sys.time(),units="secs"),".csv"))
+```
+
+```{r}
+
+cores = detectCores()
+cl = makeCluster(20)
+registerDoParallel(cl = cl)
+
+reps = 2
+
+seed_df_refined <- 
+  foreach(r = 1:reps, .combine=rbind) %:%
+   foreach(asp.mag.i = asp.mags, .combine=rbind, .packages=c("tidyverse","EnvStats")) %:% 
+    foreach(clim.sd.i = clim.sds, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
+      
+    # Starting values for while loop
+    x <- 1
+    
+    seeds <- seed_df_r1$seeds[seed_df_r1$asp.mag == asp.mag.i & seed_df_r1$clim.sd == clim.sd.i]
+
+    while(x>0.0005){
+
+      annual.df <- data.frame(yr=1:years, lam=NA)
+
+      growth_params.i <- growth_params
+      surv_params.i <- surv_params
+      growth_params.i$asp.mag <- surv_params.i$asp.mag <- asp.mag.i
+
+      for(yr in 1:years){
+
+        clim.yr <- rnorm(1,sd=clim.sd.i)
+
+        growth_params.i$clim <- surv_params.i$clim <- clim.yr
+
+        # Initiate a full population MX for current year
+        pop.mx <- matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
+
+        # Build the full population mx
+        for(n in 1:n.subpops){
+
+          # Add subpop asp.effect to parameters
+          surv_params.i$asp.effect <- growth_params.i$asp.effect <- asp.effects[n]
+
+          # Create sub-population matrix
+          subpop.mx = subpop_mx_fun(surv_params = surv_params.i,
+                                    growth_params = growth_params.i,
+                                    seeds.in = seeds)
+
+          start.cell = start.cells[n]
+          pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
+          rm(subpop.mx)
+        }
+
+        lam <- Re(eigen(pop.mx)$values[1])
+        annual.df$lam[yr] <- lam
+      
+        }
+
+      annual.df <- filter(annual.df, yr>burn.in)
+      lt.lam <- geoMean(annual.df$lam)
+      
+      x <- (1.0005-lt.lam)^2
+      
+      lam.diff = 1.0005 - lt.lam
+      
+      if(lam.diff < 0){ 
+        seeds <- seeds - 1
+      } else
+        if(lam.diff>0){
+          seeds <- seeds + 1
+        }
+
+      } # End while loop
+
+    # Create output dataframe for this row
+    tmp.df = data.frame(asp.mag = asp.mag.i,
+                        clim.sd = clim.sd.i,
+                        seeds = seeds,
+                        rep = r)
+    return(tmp.df)
+}
+stopCluster(cl)
 
 ```
 
-
   
-  # Run seednum_fun through optim function to fund the seed number that gets a lambda value of around 1.01
-  seeds.optim = stats::optim(par = 1000, fn = complex_seeds_fun, asp.mag=asp.mag.i, clim.sd=asp.mag.i, years=(burn.in+years), method = "L-BFGS-B", lower=0, upper=10000000, 
-                             control = list(factr = 1e-15))
-  
-  # Save that seed number to the global environment
-  seeds.i <- round(seeds.optim$par)
-  seed_df$seeds[i] <- seeds.i 
-
-#### Look at growth fun across range of clim var, asp.eff, asp.mag ####
 ```{r more_growthFun}
 
 growth_df = expand.grid(asp.effect = c(-1,1),
@@ -253,7 +336,6 @@ ggplot(growth_df,aes(x=clim,y=juv,color=as.factor(asp.effect)))+
   scale_y_continuous(limits = c(0,1))
 
 ```
-
 
 #### Look at survival fun across range of clim var, asp.eff, asp.mag ####
 ```{r more_survivalFun}
