@@ -1,4 +1,4 @@
-simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, asp.effects){
+simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, asp.effects,seeds){
     
     # total number of years to run the loop
     years = burn.in.yrs + sim.yrs
@@ -46,14 +46,12 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
         # Add subpop asp.effect to parameters
         surv_params.n$asp.effect = growth_params.n$asp.effect = asp.effects[n]
         
-        seeds = seeds_df$seeds[seeds_df$asp.mag==asp.mag & seeds_df$aspect.effect == asp.effects[n]]
-        # seeds = 40
         # Create sub-population matrix
         subpop.mx = subpop_mx_fun(surv_params = surv_params.n,
                                   growth_params = growth_params.n,
                                   seeds = seeds)
         
-        Re(eigen(subpop.mx)$values[1])
+        # Re(eigen(subpop.mx)$values[1])
         start.cell = start.cells[n]
         pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
         rm(subpop.mx)

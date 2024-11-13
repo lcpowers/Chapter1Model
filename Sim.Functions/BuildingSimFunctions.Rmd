@@ -25,7 +25,23 @@ source("Sim.Functions/moveMx_fun.R")
 source("Sim.Functions/simfun_exp.R")
 source("ModelFunctions/ParamVals.R")
 source("ModelFunctions/subpop_mx_fun.R")
-seeds_df <- read_csv("ModelFunctions/fecundity.csv")
+seeds_df <- read_csv("seedSearch_2024-11-13 07:46:55.337138.csv") %>% 
+  mutate(seeds2 = floor(seeds)) %>% 
+  group_by(asp.mag) %>% 
+  summarize(avg.seeds = round(mean(seeds)))
+
+
+```
+
+
+## Exponential growth, symmetrical movement
+#### Testing out the simplest version of simulation
+```{r S1_setup}
+# Things needed to run sim function line by line
+clim.sd.i <- clim.sd <- 2
+asp.mag <- asp.mag.i <- 2
+rep = 1
+move.rates.row <- 2
 
 # Sim. function inputs
 burn.in.yrs <- 100
@@ -33,21 +49,12 @@ sim.yrs <- 500
 asp.effects <- c(-1,1)
 n.subpops <- length(asp.effects)
 reps <- 5
-clim.sds <- seq(0,20,by=4)
-asp.mags <- seq(0,20,by=2)
-```
-
-
-## Exponential growth, symmetrical movement
-#### Testing out the simplest version of simulation
-```{r S1_setup}
-# Things needed to run sim funciton line by line
-# clim.sd <- 2
-# asp.mag <- 2
+clim.sds <- seq(0,30,by=1)
+asp.mags <- seq(0,25,by=1)
 
 ## Creating all combinations of movement rates
 subpop.names = LETTERS[1:n.subpops] # Name subpops with letters
-move.rates = seq(0.1,0.2,by=0.1)
+move.rates = seq(0,0.3,0.1)
 move.dirs = expand.grid(from=subpop.names,to=subpop.names) %>% # get all combos
   # Remove rows that imply no movement (A to A)
   filter(from!=to) %>% 
@@ -67,7 +74,7 @@ rm(subpop.names,move.dirs,move.rates) # remove extra things from env
 
 #### Run S1 #####
 cores = detectCores()
-cl = makeCluster(cores/5)
+cl = makeCluster(20)
 registerDoParallel(cl = cl)
 
 S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
@@ -78,13 +85,12 @@ S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","Env
         move.rates.i <- move.rates.df[move.rates.row,]
         
         ##### Create a movement matrix from the move.rates row
-        move.mx.i = moveMx_fun(n.subpops,move.rates.i)
+        move.mx.i <- moveMx_fun(n.subpops,move.rates.i)
         
-        # clim.sd.i = 10
-        # asp.mag.i = 0
+        seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i]
         
         df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops,asp.effects = asp.effects,
-                            clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i)
+                            clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i)
         
         tmp.df = df %>%
           filter(year>burn.in.yrs) %>% # Filter out burn-in years. This could also happen within the function.
@@ -118,12 +124,10 @@ ggplot(S1_plot_df,aes(x=clim.sd,y=asp.mag,z=agg.lt.pop.lam))+
   geom_contour_filled()+
   facet_wrap(~move.rate)
 
-ggplot(S1_out_df,aes(x=clim.sd,y=lt.pop.lam,color=factor(asp.mag)))+
-  geom_smooth()
+ggplot(filter(S1_plot_df,asp.mag%in%1:20),aes(x=clim.sd,y=agg.lt.pop.lam,color=factor(asp.mag)))+
+  geom_smooth()+
+  facet_wrap(~move.rate)
 
-
-clim.sd.i <- 10
-asp.mag.i <- 20
 move.rates.i <- move.rates.df[1,]
 move.mx.i <- moveMx_fun(n.subpops,move.rates.i)
 df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops, asp.effects = asp.effects,
