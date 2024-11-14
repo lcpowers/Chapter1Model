@@ -25,11 +25,11 @@ source("Sim.Functions/moveMx_fun.R")
 source("Sim.Functions/simfun_exp.R")
 source("ModelFunctions/ParamVals.R")
 source("ModelFunctions/subpop_mx_fun.R")
-seeds_df <- read_csv("seedSearch_2024-11-13 07:46:55.337138.csv") %>% 
+seeds_df <- read_csv("seedSearch_2024-11-14 09:27:34.519536.csv") %>% 
+  rbind(.,read_csv("seedSearch_2024-11-14 10:03:24.033834.csv")) %>% 
   mutate(seeds2 = floor(seeds)) %>% 
   group_by(asp.mag) %>% 
   summarize(avg.seeds = round(mean(seeds)))
-
 
 ```
 
@@ -48,13 +48,13 @@ burn.in.yrs <- 100
 sim.yrs <- 500
 asp.effects <- c(-1,1)
 n.subpops <- length(asp.effects)
-reps <- 5
-clim.sds <- seq(0,30,by=1)
-asp.mags <- seq(0,25,by=1)
+reps <- 20
+clim.sds <- seq(0,25,by=1)
+asp.mags <- seq(0,20,by=1)
 
 ## Creating all combinations of movement rates
 subpop.names = LETTERS[1:n.subpops] # Name subpops with letters
-move.rates = seq(0,0.3,0.1)
+move.rates = seq(0,0.05,0.005)
 move.dirs = expand.grid(from=subpop.names,to=subpop.names) %>% # get all combos
   # Remove rows that imply no movement (A to A)
   filter(from!=to) %>% 
@@ -109,7 +109,7 @@ S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","Env
       }
 stopCluster(cl)
 
-write_csv(S1_out_df,paste0("Sim.Output/S1_ExpGrowth_SymMovement/S1_output_",round(Sys.time()),".csv"))
+# write_csv(S1_out_df,paste0("Sim.Output/S1_ExpGrowth_SymMovement/S1_output_",round(Sys.time()),".csv"))
 ```
 
 #### Plot S1 results
@@ -128,10 +128,8 @@ ggplot(filter(S1_plot_df,asp.mag%in%1:20),aes(x=clim.sd,y=agg.lt.pop.lam,color=f
   geom_smooth()+
   facet_wrap(~move.rate)
 
-move.rates.i <- move.rates.df[1,]
-move.mx.i <- moveMx_fun(n.subpops,move.rates.i)
-df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops, asp.effects = asp.effects,
-                            clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i)
+ggplot(filter(S1_plot_df,asp.mag==16),aes(x=clim.sd,y=agg.lt.pop.lam,color=factor(move.rate)))+
+  geom_smooth()
 
 ggplot(filter(df,year>100),aes(x=year,y=pop.lam))+
   geom_point()
