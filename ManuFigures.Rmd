@@ -47,8 +47,8 @@ asp.effects = c(-1,1)
 n.subpops = length(asp.effects)
 start.cells = seq(1,n.subpops*3,by=3)
 
-lam_df = expand.grid(asp.mag = c(1,10,20),
-                     clim = seq(-20,20,1),
+lam_df = expand.grid(asp.mag = 20,
+                     clim = seq(-50,50,1),
                      s1 = NA, s2 = NA, pop=NA)
 
 for(i in 1:nrow(lam_df)){
@@ -74,13 +74,22 @@ for(i in 1:nrow(lam_df)){
   
 }
 
-ggplot(lam_df,aes(x=clim))+
+lams <- ggplot(lam_df,aes(x=clim))+
   geom_line(aes(y=s1,color="s1"))+
   geom_line(aes(y=s2,color="s2"))+
   geom_line(aes(y=pop,color="pop"))+
-  facet_wrap(~asp.mag)+
-  theme_bw()
+  theme_bw()+
+  scale_x_continuous(limits = c(-50,50))+
+  theme(legend.position = "none")+
+  labs(title="Aspect mag = 20")
 
+hist <- ggplot(data=data.frame(clim=rnorm(10^6,0,15)),aes(x=clim))+
+  geom_histogram(fill="grey75",color="white",bins=50)+
+  scale_x_continuous(limits = c(-50,50))+
+  theme(axis.text = element_blank())+
+  labs(title = "Clim SD = 15")
+
+cowplot::plot_grid(lams,hist,ncol=1)
 ```
 
 
