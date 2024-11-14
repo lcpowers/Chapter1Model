@@ -266,7 +266,7 @@ asp.effects = c(-1,1)
 burn.in = 50
 sim.years = 500
 years <- burn.in + sim.years
-start.cells = F.rows = seq(1,n.subpops*3,by=3)
+start.cells = seq(1,n.subpops*3,by=3)
 
 # Loop over these
 reps = 20
