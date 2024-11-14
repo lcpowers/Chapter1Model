@@ -254,7 +254,6 @@ stopCluster(cl)
 write_csv(seed_df_coarse,paste0("seeds_coarse_",round(Sys.time(),units="secs"),".csv"))
 ```
 
-
 # Fine search
 ```{r seed_fine_search}
 
@@ -513,6 +512,8 @@ seed_climsd_df <- maxLam_by_climsd_df %>%
 x.target <- (0.001)^2
 reps <- 20
 
+move.mx <- move.mx.i
+
 # Initiate cluster
 # stopCluster(cl)
 cl = makeCluster(reps)
@@ -572,7 +573,9 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
           } # End subpop loop
         
         # Calc t1 population vector
-        pop.vec.t1 = pop.mx%*%pop.vec.t0
+        
+        # pop.mx.m <- move.mx%*%pop.mx
+        pop.vec.t1 = move.mx%*%pop.mx%*%pop.vec.t0
         
         lam <- sum(pop.vec.t1)/sum(pop.vec.t0)
         annual.df$lam[yr] <- lam
@@ -587,7 +590,7 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
       
       annual.df <- filter(annual.df,yr>burn.in)
       lt.lam <- geoMean(annual.df$lam)
-      # print(c(lt.lam,seeds))
+      print(c(lt.lam,seeds))
       
       x <- (lt.lam - 1)^2
       
@@ -623,15 +626,11 @@ ggplot(filter(seed_search,asp.mag==25),aes(x=seeds))+
 # Plot fine search results
 ```{r}
 
-seeds1 <- read_csv("seeds_fine_2024-11-04 08:33:55.csv")
-seeds2 <- read_csv("seeds_fine_2024-11-04 10:46:14.csv") %>% 
-  mutate(rep = rep+20)
 
 seeds <- rbind(seeds1,seeds2)
 
 ggplot(filter(seeds,asp.mag==15,clim.sd==30),aes(x=seeds))+
   geom_histogram(bins=40)
-
 
 ```
 
@@ -704,8 +703,7 @@ ggplot(surv_df,aes(x=clim,y=seed,color=place.name))+
   geom_line()+
   geom_vline(xintercept=0)+
   facet_wrap(~asp.mag)+
-  theme_bw()+
-  scale_color_manual(values=place.cols)
+  theme_bw()
 
 ggplot(surv_df,aes(x=clim,y=juv,color=as.factor(asp.effect)))+
   geom_line()+
@@ -718,6 +716,8 @@ ggplot(surv_df,aes(x=clim,y=flrg,color=as.factor(asp.effect)))+
   geom_vline(xintercept=0)+
   facet_wrap(~asp.mag)+
   theme_bw()
+
+
 
 ```
 
