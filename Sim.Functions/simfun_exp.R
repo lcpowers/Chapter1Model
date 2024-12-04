@@ -1,4 +1,4 @@
-simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, asp.effects,seeds){
+simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, asp.effects,seeds,rho){
     
     # total number of years to run the loop
     years = burn.in.yrs + sim.yrs
@@ -10,9 +10,11 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
     output_df = data.frame(year = 1:years,
                            clim.sd = clim.sd,
                            asp.mag = asp.mag,
+                           rho = rho,
                            clim = NA,
                            pop.lam = NA)
-
+    output_df[paste0("s",1:n.subpops)] <- NA
+    
     # Define model params
     surv_params.n = surv_params
     growth_params.n = growth_params
@@ -24,18 +26,27 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
     pop.size = 1000
     pop.vec.t0 = rep(pop.size,3*n.subpops)
     
+    e_old <- rnorm(1, mean=0, sd=clim.sd)
+    
     for(yr in 1:years){
       
       # yr = 1
       
       # Climate in this year
-      clim.yr = rnorm(n=1, mean=0, sd=clim.sd)
+      # Random climate draw for this year
+      z_t <- rnorm(1,mean=0,sd=clim.sd)
       
+      # M&D equation 4.16 (pg. 139) 
+      e_new <- rho*e_old + clim.sd*(1 - rho^2)^(1/2)*z_t
+
       # add climate value to output df
-      output_df$clim[yr] = clim.yr
-      
+      output_df$clim[yr] = e_new
+
       # Add the climate value to survival and growth function parameter lists
-      surv_params.n$clim = growth_params.n$clim = clim.yr
+      surv_params.n$clim = growth_params.n$clim = e_new
+      
+      # Make this years adjusted clim last years & Remove this years
+      e_old <- e_new;rm(e_new)
       
       # Initiate a full population MX for current year
       pop.mx = matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
@@ -54,7 +65,9 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
         # Re(eigen(subpop.mx)$values[1])
         start.cell = start.cells[n]
         pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
+        output_df[yr,paste0("s",n)] <- Re(eigen(subpop.mx)$values[1])
         rm(subpop.mx)
+        
       } # End subpop loop
       
       # Multiply movement and pop matrices
