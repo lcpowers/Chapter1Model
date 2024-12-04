@@ -148,13 +148,14 @@ s2 = same aspect but different aspect strengths
 #### Plot S1 results
 ```{r}
 
-S1_plot_df <- read_csv(file = "Sim.Output/S1_ExpGrowth_SymMovement/S1_output_2024-11-23 09:00:01.csv") %>% 
+n1p1_plot_df <- read_csv(file = "Sim.Output/S1_ExpGrowth_SymMovement/S1_output_2024-11-23 09:00:01.csv") %>% 
   group_by(clim.sd,asp.mag,move.rate = AtoB) %>% 
   summarize(agg.pop.var = mean(pop.var),
             mean.corr = mean(sub.corr,na.rm = T),
             agg.lt.pop.lam = mean(lt.pop.lam)) %>% 
   mutate(asp.effects = c("-1, +1"))
 
+<<<<<<< HEAD
 # S2_plot_df <- S2_out_df %>% 
 #   group_by(clim.sd,asp.mag,move.rate = AtoB) %>% 
 #   summarize(agg.pop.var = mean(pop.var),
@@ -173,6 +174,29 @@ move.rates = c(0,0.025,0.05,0.075,0.1)
 #   facet_wrap(~move.rate,ncol=5)
 #
 # cowplot::plot_grid(p11,p15,ncol = 1)
+=======
+n1n5_plot_df <- read_csv(file = "Sim.Output/S1_ExpGrowth_SymMovement/S1_output_2024-11-25 20:01:57.csv") %>% 
+  group_by(clim.sd,asp.mag,move.rate = AtoB) %>% 
+  summarize(agg.pop.var = mean(pop.var),
+            mean.corr = mean(sub.corr,na.rm = T),
+            agg.lt.pop.lam = mean(lt.pop.lam)) %>% 
+  mutate(asp.effects = c("-1, -5"))
+
+move.rates = c(0,0.025,0.05,0.075,0.1)
+
+plot_breaks = seq(0.5,1.3,0.1)
+
+n1p1 <- ggplot(filter(n1p1_plot_df, move.rate %in% move.rates),aes(x=clim.sd,y=asp.mag,z=agg.lt.pop.lam))+
+  geom_contour_filled(breaks = plot_breaks)+
+  facet_wrap(~move.rate,ncol=5) +
+  labs(x="Climate SD", y="Microhabitat effect",title="Microhabitat shifts = c(-1,1)")
+
+n1n5 <- ggplot(filter(n1n5_plot_df, move.rate %in% move.rates),aes(x=clim.sd,y=asp.mag,z=agg.lt.pop.lam))+
+  geom_contour_filled(breaks = plot_breaks)+
+  facet_wrap(~move.rate,ncol=5)+
+  labs(x="Climate SD", y="Microhabitat effect",title="Microhabitat shifts = c(-1,-5)")
+
+cowplot::plot_grid(n1p1,n1n5,ncol = 1)
 
 ggplot(filter(S1_plot_df,asp.mag%in%c(0,5,10,15,20)&move.rate%in%move.rates),aes(x=clim.sd,y=agg.lt.pop.lam,color=factor(asp.mag)))+
   geom_smooth()+
