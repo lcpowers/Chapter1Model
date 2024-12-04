@@ -126,7 +126,7 @@ group_by(clim.sd,asp.mag,move.rate = AtoB,rho) %>%
 
 move.rates = c(0,0.04,0.1)
 
-plot.breaks = seq(0.5,1.3,0.1)
+plot.breaks = seq(0.5,1.3,0.05)
 neg.pal = brewer.pal(n = sum(plot.breaks<1),name = "YlOrBr")
 pos.pal = brewer.pal(n = 9,name = "Blues")[5:9]
 
@@ -135,8 +135,10 @@ cols = c(rev(neg.pal),pos.pal)
 ggplot(filter(plot_df,move.rate %in%move.rates), aes(x=clim.sd,y=asp.mag,z=agg.lt.pop.lam))+
   geom_contour_filled(breaks=plot.breaks)+
   #scale_fill_manual(values = cols)+
-  facet_grid(rho~move.rate)
-
+  facet_grid(move.rate~rho)+
+  theme_bw(base_size = 16)+
+  labs(x="Climate SD",y="Microhabitat effect strength",fill="lambda")
+ggsave(h=8,w=12,filename = "climateAutocorr_x_moverates.png",dpi=300)
 ```
 
 
@@ -153,24 +155,24 @@ S1_plot_df <- read_csv(file = "Sim.Output/S1_ExpGrowth_SymMovement/S1_output_202
             agg.lt.pop.lam = mean(lt.pop.lam)) %>% 
   mutate(asp.effects = c("-1, +1"))
 
-S2_plot_df <- S2_out_df %>% 
-  group_by(clim.sd,asp.mag,move.rate = AtoB) %>% 
-  summarize(agg.pop.var = mean(pop.var),
-            mean.corr = mean(sub.corr,na.rm = T),
-            agg.lt.pop.lam = mean(lt.pop.lam)) %>% 
-  mutate(asp.effects = c("-1, -5"))
+# S2_plot_df <- S2_out_df %>% 
+#   group_by(clim.sd,asp.mag,move.rate = AtoB) %>% 
+#   summarize(agg.pop.var = mean(pop.var),
+#             mean.corr = mean(sub.corr,na.rm = T),
+#             agg.lt.pop.lam = mean(lt.pop.lam)) %>% 
+#   mutate(asp.effects = c("-1, -5"))
 
 move.rates = c(0,0.025,0.05,0.075,0.1)
-
-p11 <- ggplot(filter(S1_plot_df, move.rate %in% move.rates),aes(x=clim.sd,y=asp.mag,z=agg.lt.pop.lam))+
-  geom_contour_filled()+
-  facet_wrap(~move.rate,ncol=5)
-
-p15 <- ggplot(filter(S2_plot_df, move.rate %in% move.rates),aes(x=clim.sd,y=asp.mag,z=agg.lt.pop.lam))+
-  geom_contour_filled()+
-  facet_wrap(~move.rate,ncol=5)
-
-cowplot::plot_grid(p11,p15,ncol = 1)
+# 
+# p11 <- ggplot(filter(S1_plot_df, move.rate %in% move.rates),aes(x=clim.sd,y=asp.mag,z=agg.lt.pop.lam))+
+#   geom_contour_filled()+
+#   facet_wrap(~move.rate,ncol=5)
+# 
+# p15 <- ggplot(filter(S2_plot_df, move.rate %in% move.rates),aes(x=clim.sd,y=asp.mag,z=agg.lt.pop.lam))+
+#   geom_contour_filled()+
+#   facet_wrap(~move.rate,ncol=5)
+#
+# cowplot::plot_grid(p11,p15,ncol = 1)
 
 ggplot(filter(S1_plot_df,asp.mag%in%c(0,5,10,15,20)&move.rate%in%move.rates),aes(x=clim.sd,y=agg.lt.pop.lam,color=factor(asp.mag)))+
   geom_smooth()+
@@ -184,7 +186,6 @@ ggplot(filter(S1_plot_df,asp.mag%in%c(0,5,10,15)&move.rate%in%move.rates),
        aes(x=clim.sd,y=agg.pop.var,color=factor(move.rate)))+
   geom_smooth(se=F)+
   facet_wrap(~asp.mag)
-
 
 ggplot(filter(S1_plot_df,asp.mag%in%c(0,5,10,15,20)&move.rate%in%move.rates),
        aes(x=clim.sd,y=mean.corr,color=factor(move.rate)))+
@@ -222,7 +223,7 @@ rm(list=ls())
 years <- 100
 clim.sd <- 1
 e_old <- rnorm(1,mean=0,sd=clim.sd)
-rho <- 0.5
+rho <- 0.8
 
 clims <- data.frame(years = 1:100,
                     clim = NA,
