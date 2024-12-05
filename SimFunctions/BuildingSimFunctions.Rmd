@@ -154,7 +154,10 @@ n1p1_plot_df <- read_csv(file = "Sim.Output/S1_ExpGrowth_SymMovement/S1_output_2
             agg.lt.pop.lam = mean(lt.pop.lam)) %>% 
   mutate(asp.effects = c("-1, +1"))
 
+<<<<<<< HEAD:Sim.Functions/BuildingSimFunctions.Rmd
 
+=======
+>>>>>>> e97118219a287caf00536b2ab3b23349d01734b3:SimFunctions/BuildingSimFunctions.Rmd
 # S2_plot_df <- S2_out_df %>% 
 #   group_by(clim.sd,asp.mag,move.rate = AtoB) %>% 
 #   summarize(agg.pop.var = mean(pop.var),
@@ -197,7 +200,7 @@ n1n5 <- ggplot(filter(n1n5_plot_df, move.rate %in% move.rates),aes(x=clim.sd,y=a
 
 cowplot::plot_grid(n1p1,n1n5,ncol = 1)
 
-ggplot(filter(S1_plot_df,asp.mag%in%c(0,5,10,15,20)&move.rate%in%move.rates),aes(x=clim.sd,y=agg.lt.pop.lam,color=factor(asp.mag)))+
+ggplot(filter(n1p1_plot_df,asp.mag%in%c(0,5,10,15,20)&move.rate%in%move.rates),aes(x=clim.sd,y=agg.lt.pop.lam,color=factor(asp.mag)))+
   geom_smooth()+
   facet_wrap(~move.rate)
 
@@ -205,23 +208,23 @@ ggplot(filter(S1_plot_df,asp.mag%in%c(0,5,10,15)),aes(x=clim.sd,y=agg.lt.pop.lam
   geom_smooth(se=F)+
   facet_wrap(~asp.mag)
 
-ggplot(filter(S1_plot_df,asp.mag%in%c(0,5,10,15)&move.rate%in%move.rates),
+ggplot(filter(n1p1_plot_df,asp.mag%in%c(0,5,10,15)&move.rate%in%move.rates),
        aes(x=clim.sd,y=agg.pop.var,color=factor(move.rate)))+
   geom_smooth(se=F)+
   facet_wrap(~asp.mag)
 
-ggplot(filter(S1_plot_df,asp.mag%in%c(0,5,10,15,20)&move.rate%in%move.rates),
+ggplot(filter(n1p1_plot_df,asp.mag%in%c(0,5,10,15,20)&move.rate%in%move.rates),
        aes(x=clim.sd,y=mean.corr,color=factor(move.rate)))+
   geom_line()+
   facet_wrap(~asp.mag)
 
-ggplot(filter(S1_plot_df,move.rate==0&asp.mag%in%seq(8,20,2)),
+ggplot(filter(n1p1_plot_df,move.rate==0&asp.mag%in%seq(8,20,2)),
        aes(x=clim.sd,y=mean.corr,color=factor(asp.mag)))+
-  geom_line(se=F,linewidth=2)+
+  geom_smooth(se=F,linewidth=2)+
   scale_color_viridis_d()+
   theme_bw()
 
-ggplot(filter(S1_plot_df,move.rate==0),aes(x=clim.sd,y=asp.mag,z=mean.corr))+
+ggplot(filter(n1p1_plot_df,move.rate==0),aes(x=clim.sd,y=asp.mag,z=mean.corr))+
   geom_contour_filled()+
   theme_bw()
 
@@ -232,7 +235,7 @@ ggplot(filter(S1_plot_df,move.rate==0),aes(x=clim.sd,y=asp.mag,z=mean.corr))+
   geom_vline(xintercept = 12)+
   theme_bw()
 
-ggplot(filter(S1_plot_df,move.rate==0.1),aes(y=mean.corr,x=agg.lt.pop.lam))+
+ggplot(filter(n1p1_plot_df,move.rate==0),aes(y=mean.corr,x=agg.lt.pop.lam))+
   geom_line()+
   facet_wrap(~asp.mag)+
   theme_bw()

@@ -35,6 +35,7 @@ source("ModelFunctions/survival_fun.R")
 source("ModelFunctions/growth_fun.R")
 source("ModelFunctions/subpop_mx_fun.R")
 source("ModelFunctions/seednum_fun.R")
+source("SimFunctions/moveMx_fun.R")
 ```
 
 ### Survival function
@@ -91,299 +92,8 @@ ggplot(plot.df,aes(x=clim,y=g.rate,color=stage))+
 rm(i)
 ```
 
-### Finding seed # (to set F cell) based on magnitude and direction of aspect effect
-```{r seednumbers}
-
-seed_df <- expand.grid(aspect.effect = c(-1,1),
-                       asp.mag = 20,
-                       # clim = -40:45,
-                       seeds=NA,
-                       lam=NA)
-
-
-for(i in 1:nrow(seed_df)){
-  
-  growth_params.i <- growth_params
-  surv_params.i <- surv_params
-  
-  growth_params.i$asp.effect = surv_params.i$asp.effect = seed_df$aspect.effect[i]
-  growth_params.i$asp.mag = surv_params.i$asp.mag = seed_df$asp.mag[i]
-
-  surv.rates <- do.call(survival_fun,surv_params.i)
-  
-  surv_params.i$clim <- growth_params.i$clim <- seed_df$clim[i]
-  
-  
-  # Get survival/growth matrix (seeds = 0 means no fecundity)
-  sg.mx = subpop_mx_fun(surv_params = surv_params.i,growth_params = growth_params.i,seeds.in=0)
-  
-  # Run seednum_fun through optim function to fund the seed number that gets a lambda value of around 1.01
-  seeds.optim = stats::optim(par = 100, fn = basic_seeds_fun, method = "L-BFGS-B", lower=0, upper=10000000, 
-                             control = list(factr = 1e-15))
-  
-  # Save that seed number to the global environment
-  seeds.i <- round(seeds.optim$par)
-  seed_df$seeds[i] <- seeds.i 
-  
-  sg.mx[1,3] <- surv.rates["flrg"]*P.flr*seeds.i
-  
-  seed_df$lam <- Re(eigen(sg.mx)$values[1])
-
-  rm(growth_params.i,surv_params.i,sg.mx,seeds.i,surv.rates)
-  
-  }
-
-write_csv(seed_df,"ModelFunctions/fecundity.csv")
-```
-
-### VERSION 2: Finding seed # (to set F cell) based on magnitude and direction of aspect effect PLUS LONG TERM LAMBDA
-# Coarse search
-```{r seednumbers}
-
-# Constants
-n.subpops=2
-asp.effects = c(-1,1)
-burn.in = 50
-sim.years = 100
-years <- burn.in + sim.years
-start.cells = F.rows = seq(1,n.subpops*3,by=3)
-x.target <- (0.005)^2
-
-# Loop over these
-asp.mags =  seq(0,30,1)
-clim.sds = seq(0,20,1)
-reps <- 20
-
-# Initiate cluster
-cl = makeCluster(20)
-registerDoParallel(cl = cl)
-
-seed_df_coarse <- 
-  foreach(r = 1:reps,.combine=rbind) %:% 
-    foreach(asp.mag.i = asp.mags, .combine=rbind, .packages=c("tidyverse","EnvStats")) %:% 
-      foreach(clim.sd.i = clim.sds, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
-        
-        # Starting values for while loop
-        x <- 1;seeds <- 0;lt.lam <- 0
-  
-        # Fix clim value to stay the same for the while loop, otherwise you could miss the target
-        clims.i <- rnorm(years,sd=clim.sd.i)
-        
-        lo.seeds <-0 ; hi.seeds <- 10^8 
-    
-        growth_params.i <- growth_params
-        surv_params.i <- surv_params
-        growth_params.i$asp.mag <- surv_params.i$asp.mag <- asp.mag.i
-  
-        while(x>x.target){
-          
-          seeds <- round((lo.seeds + hi.seeds)/2)
-          
-          annual.df <- data.frame(yr=1:years, lam=NA)
-    
-          # Set the starting population vectors
-          pop.size = 1000
-          pop.vec.t0 = rep(pop.size,3*n.subpops)
-          
-          for(yr in 1:years){
-            
-            clim.yr <- clims.i[yr]
-            
-            growth_params.i$clim <- surv_params.i$clim <- clim.yr
-            
-            # Initiate a full population MX for current year
-            pop.mx <- matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
-            
-            # Build the full population mx
-            for(n in 1:n.subpops){
-          
-              # Add subpop asp.effect to parameters
-              surv_params.i$asp.effect <- growth_params.i$asp.effect <- asp.effects[n]
-          
-              # Create sub-population matrix
-              subpop.mx = subpop_mx_fun(surv_params = surv_params.i,
-                                        growth_params = growth_params.i,
-                                        seeds.in = seeds)
-              
-              start.cell = start.cells[n]
-              pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
-              rm(subpop.mx)
-              
-            } # End subpop loop
-            
-          # Calc t1 population vector
-          pop.vec.t1 = pop.mx%*%pop.vec.t0
-            
-          lam <- sum(pop.vec.t1)/sum(pop.vec.t0)
-          annual.df$lam[yr] <- lam
-            
-          # Rescale the population vector. 
-          pop.vec.t1 = pop.vec.t1/sum(pop.vec.t1)*pop.size
-            
-          pop.vec.t0 = pop.vec.t1
-          rm(pop.vec.t1)
-          
-          } # End year loop
-    
-          annual.df <- filter(annual.df, yr>burn.in)
-          lt.lam <- geoMean(annual.df$lam)
-          x <- (1.005-lt.lam)^2
-          
-          if((lt.lam - 1.0001)>0){ # If lambda is too high, reset the max.seed value to be the current seed value (lower the ceiling)
-            
-            hi.seeds <- seeds
-            
-            } else if((lt.lam - 1.0001)<0){ # If lambda is too low, set the min.seed value to be current seed value (raise the floor)
-            
-            lo.seeds <- seeds }
-    
-          # print(c(lt.lam,seeds))
-          
-      }
-  
-      # Create output dataframe for this row
-      tmp.df = data.frame(asp.mag = asp.mag.i,
-                          clim.sd = clim.sd.i,
-                          seeds = seeds,
-                          rep = r)
-      return(tmp.df)
-
-    }
-
-stopCluster(cl)
-write_csv(seed_df_coarse,paste0("seeds_coarse_",round(Sys.time(),units="secs"),".csv"))
-```
-
-# Fine search
-```{r seed_fine_search}
-
-# Results from coarse search
-# seed_df_coarse <- read_csv("seeds_coarse_2024-10-31 06:00:24.csv")
-
-# Constants
-n.subpops=2
-asp.effects = c(-1,1)
-burn.in = 50
-sim.years = 500
-years <- burn.in + sim.years
-start.cells = seq(1,n.subpops*3,by=3)
-
-# Loop over these
-reps = 20
-asp.mags <- seq(0,20,1)
-clim.sds <- seq(0,20,1)
-
-# Target: The squared difference between lambda and 1.05 must be smaller than this to end while loop
-x.target <- (1 - 1.001)^2
-
-
-# Initiate cluset
-# stopCluster(cl)
-cores = detectCores()
-cl = makeCluster(20)
-registerDoParallel(cl = cl)
-
-seed_df_fine <- 
-  foreach(r = 1:reps, .combine=rbind) %:%
-   foreach(asp.mag.i = asp.mags, .combine=rbind, .packages=c("tidyverse","EnvStats")) %:% 
-    foreach(clim.sd.i = clim.sds, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
-      
-        # Starting values for while loop
-        x <- 1;lt.lam <- 0
-  
-        # Fix clim value to stay the same for the while loop, otherwise you could miss the target
-        clims.i <- rnorm(years,sd=clim.sd.i)
-        
-        seed_df <- filter(seed_df_coarse,asp.mag==asp.mag.i & clim.sd == clim.sd.i)
-        
-        lo.seeds <- 0; hi.seeds <- 10^8
-        
-        rm(seed_df)
-        
-        growth_params.i <- growth_params
-        surv_params.i <- surv_params
-        growth_params.i$asp.mag <- surv_params.i$asp.mag <- asp.mag.i
-  
-        while(x>x.target){
-          
-          seeds <- (lo.seeds + hi.seeds)/2
-          
-          annual.df <- data.frame(yr=1:years, lam=NA)
-    
-          # Set the starting population vectors
-          pop.size = 1000
-          pop.vec.t0 = rep(pop.size,3*n.subpops)
-          
-          for(yr in 1:years){
-            
-            clim.yr <- clims.i[yr]
-            
-            growth_params.i$clim <- surv_params.i$clim <- clim.yr
-            
-            # Initiate a full population MX for current year
-            pop.mx <- matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
-            
-            # Build the full population mx
-            for(n in 1:n.subpops){
-          
-              # Add subpop asp.effect to parameters
-              surv_params.i$asp.effect <- growth_params.i$asp.effect <- asp.effects[n]
-          
-              # Create sub-population matrix
-              subpop.mx = subpop_mx_fun(surv_params = surv_params.i,
-                                        growth_params = growth_params.i,
-                                        seeds.in = seeds)
-              
-              start.cell = start.cells[n]
-              pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
-              rm(subpop.mx)
-              
-            } # End subpop loop
-            
-          # Calc t1 population vector
-          pop.vec.t1 = pop.mx%*%pop.vec.t0
-            
-          lam <- sum(pop.vec.t1)/sum(pop.vec.t0)
-          annual.df$lam[yr] <- lam
-            
-          # Rescale the population vector. 
-          pop.vec.t1 = pop.vec.t1/sum(pop.vec.t1)*pop.size
-            
-          pop.vec.t0 = pop.vec.t1
-          rm(pop.vec.t1)
-          
-          } # End year loop
-    
-          annual.df <- filter(annual.df, yr>burn.in)
-          lt.lam <- geoMean(annual.df$lam)
-          x <- (1.0001-lt.lam)^2
-          
-          if((lt.lam - 1)>0){ # If lambda is too high, reset the max.seed value to be the current seed value (lower the ceiling)
-            
-            hi.seeds <- seeds
-            
-            } else if((lt.lam - 1)<0){ # If lambda is too low, set the min.seed value to be current seed value (raise the floor)
-            
-            lo.seeds <- seeds }
-    
-          # print(c(lt.lam,seeds))
-          
-      }
-  
-      # Create output dataframe for this row
-      tmp.df = data.frame(asp.mag = asp.mag.i,
-                          clim.sd = clim.sd.i,
-                          seeds = seeds,
-                          rep = r)
-      return(tmp.df)
-}
-stopCluster(cl)
-write_csv(seed_df_fine,paste0("seeds_fine_",round(Sys.time(),units="secs"),".csv"))
-
-
-```
-
-
+## Seed # search
+### Find the climate SD that maximizes lambda for all microhabitat effect strengths
 ```{r maxLam_by_climSD}
 
 asp.effects <- c(-1,1)
@@ -411,9 +121,6 @@ maxLam_by_climsd_df <-
     foreach(clim.sd.i = clim.sds, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
       
       annual.df <- data.frame(yr=1:years, lam=NA)
-      # 
-      # asp.mag.i <- 20  
-      # clim.sd.i <- 20
         
       growth_params.i <- growth_params
       surv_params.i <- surv_params
@@ -475,13 +182,8 @@ maxLam_by_climsd_df <-
       
   } # End parallel/outer loops
 stopCluster(cl)
-write_csv(maxLam_by_climsd_df,paste0("maxLam_",round(Sys.time()),".csv"))
-
-ggplot(maxLam_by_climsd_df,aes(x=clim.sd,y=lt.lam,color=factor(asp.mag)))+
-  geom_smooth()
-
-ggplot(filter(maxLam_by_climsd_df,asp.mag==20),aes(x=clim.sd,y=lt.lam,color=factor(asp.mag)))+
-  geom_smooth()
+# write_csv(maxLam_by_climsd_df,paste0("seedSearchOutput/maxLam_",round(Sys.time()),".csv"))
+# maxLam_by_climsd_df <- read_csv("seedSearchOutput/maxLam_2024-11-12 17:54:54.csv")
 
 seed_climsd_df <- maxLam_by_climsd_df %>% 
   group_by(asp.mag,clim.sd) %>% # For each clim.sd/asp.mag combination
@@ -492,7 +194,7 @@ seed_climsd_df <- maxLam_by_climsd_df %>%
 
 ```
 
-
+### For each microhabitat effect, find the seed number that corresponds to LT lambda being ~1 in peak conditions (peak climate SD)
 ```{r seeds_search}
 asp.effects <- c(-1,1)
 n.subpops <- length(asp.effects)
@@ -501,7 +203,8 @@ sim.years <- 500
 years <- burn.in + sim.years
 start.cells <- F.rows <- seq(1,n.subpops*3,by=3)
 
-seed_climsd_df <- maxLam_by_climsd_df %>% 
+seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2024-11-12 17:54:54.csv") %>% 
+  rbind(.,read_csv("seedSearchOutput/maxLam_2024-12-05 08:53:32.csv")) %>% 
   group_by(asp.mag,clim.sd) %>% # For each clim.sd/asp.mag combination
   summarise(mean.lt.lam = mean(lt.lam),
          max.lt.lam = max(lt.lam)) %>% # Find the mean lt lambda value
@@ -510,13 +213,13 @@ seed_climsd_df <- maxLam_by_climsd_df %>%
   mutate(seeds = NA)
 
 x.target <- (0.001)^2
-reps <- 20
+reps <- 50
 
-move.mx <- move.mx.i
+move.mx <- moveMx_fun(n.subpops = n.subpops, data.frame(AtoB = 0.01, BtoA = 0.01))
 
 # Initiate cluster
 # stopCluster(cl)
-cl = makeCluster(reps)
+cl = makeCluster(20)
 registerDoParallel(cl = cl)
 
 seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
@@ -615,26 +318,11 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
   return(seed_climsd_df)
 }
 stopCluster(cl)
-
-write_csv(seed_search,paste0("seedSearch_",Sys.time(),".csv"))
-
-ggplot(filter(seed_search,asp.mag==25),aes(x=seeds))+
-  geom_histogram()
-```
-
-
-# Plot fine search results
-```{r}
-
-
-seeds <- rbind(seeds1,seeds2)
-
-ggplot(filter(seeds,asp.mag==15,clim.sd==30),aes(x=seeds))+
-  geom_histogram(bins=40)
+write_csv(seed_search,paste0("seedSearchOutput/seedSearch_",Sys.time(),".csv"))
 
 ```
 
-
+#### Plotting a range of values from the growth fun
 ```{r more_growthFun}
 
 growth_df = expand.grid(asp.effect = c(-1,1),
@@ -670,7 +358,6 @@ ggplot(growth_df,aes(x=clim,y=juv,color=as.factor(asp.effect)))+
   scale_y_continuous(limits = c(0,1))
 
 ```
-
 
 #### Look at survival fun across range of clim var, asp.eff, asp.mag ####
 ```{r more_survivalFun}
@@ -721,4 +408,51 @@ ggplot(surv_df,aes(x=clim,y=flrg,color=as.factor(asp.effect)))+
 
 ```
 
+###########################################################################
+###########################################################################
+########################## Scratch and old code ###########################
 
+### Finding seed # (to set F cell) based on magnitude and direction of aspect effect
+```{r seednumbers}
+
+seed_df <- expand.grid(aspect.effect = c(-1,1),
+                       asp.mag = 20,
+                       # clim = -40:45,
+                       seeds=NA,
+                       lam=NA)
+
+
+for(i in 1:nrow(seed_df)){
+  
+  growth_params.i <- growth_params
+  surv_params.i <- surv_params
+  
+  growth_params.i$asp.effect = surv_params.i$asp.effect = seed_df$aspect.effect[i]
+  growth_params.i$asp.mag = surv_params.i$asp.mag = seed_df$asp.mag[i]
+
+  surv.rates <- do.call(survival_fun,surv_params.i)
+  
+  surv_params.i$clim <- growth_params.i$clim <- seed_df$clim[i]
+  
+  
+  # Get survival/growth matrix (seeds = 0 means no fecundity)
+  sg.mx = subpop_mx_fun(surv_params = surv_params.i,growth_params = growth_params.i,seeds.in=0)
+  
+  # Run seednum_fun through optim function to fund the seed number that gets a lambda value of around 1.01
+  seeds.optim = stats::optim(par = 100, fn = basic_seeds_fun, method = "L-BFGS-B", lower=0, upper=10000000, 
+                             control = list(factr = 1e-15))
+  
+  # Save that seed number to the global environment
+  seeds.i <- round(seeds.optim$par)
+  seed_df$seeds[i] <- seeds.i 
+  
+  sg.mx[1,3] <- surv.rates["flrg"]*P.flr*seeds.i
+  
+  seed_df$lam <- Re(eigen(sg.mx)$values[1])
+
+  rm(growth_params.i,surv_params.i,sg.mx,seeds.i,surv.rates)
+  
+  }
+
+write_csv(seed_df,"ModelFunctions/fecundity.csv")
+```
