@@ -33,7 +33,6 @@ seeds_df <- read_csv("seedSearch_2024-11-14 09:27:34.519536.csv") %>%
 
 ```
 
-
 ## Exponential growth, symmetrical movement
 #### Testing out the simplest version of simulation
 ```{r S1_setup}
@@ -44,8 +43,8 @@ rep = 1
 move.rates.row <- 2
 
 # Sim. function inputs
-burn.in.yrs <- 50
-sim.yrs <- 100
+burn.in.yrs <- 100
+sim.yrs <- 500
 asp.effects <- c(-1,1)
 n.subpops <- length(asp.effects)
 reps <- 10
@@ -155,6 +154,10 @@ n1p1_plot_df <- read_csv(file = "Sim.Output/S1_ExpGrowth_SymMovement/S1_output_2
             agg.lt.pop.lam = mean(lt.pop.lam)) %>% 
   mutate(asp.effects = c("-1, +1"))
 
+<<<<<<< HEAD:Sim.Functions/BuildingSimFunctions.Rmd
+
+=======
+>>>>>>> e97118219a287caf00536b2ab3b23349d01734b3:SimFunctions/BuildingSimFunctions.Rmd
 # S2_plot_df <- S2_out_df %>% 
 #   group_by(clim.sd,asp.mag,move.rate = AtoB) %>% 
 #   summarize(agg.pop.var = mean(pop.var),
@@ -237,7 +240,6 @@ ggplot(filter(n1p1_plot_df,move.rate==0),aes(y=mean.corr,x=agg.lt.pop.lam))+
   facet_wrap(~asp.mag)+
   theme_bw()
 
-library(viridisLite)
 ```
 
 ## adding in climate autocorrelation
@@ -282,6 +284,64 @@ ggplot(clims,aes(x = years))+
   scale_color_manual(values=c("salmon2","black"))
 ```
 
+```{r}
+move.mx = moveMx_fun(2,data.frame(AtoB=0.01,BtoA=0.01))
+asp.mag = 16
+clim.sd = 12
+seeds = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag]
+out_df = NULL
+
+df = simfun_exponential(burn.in.yrs=0,
+                      sim.yrs=200,
+                      n.subpops=n.subpops,
+                      asp.effects = c(-1,1),
+                      clim.sd=clim.sd,
+                      asp.mag=asp.mag,
+                      move.mx = move.mx,
+                      seeds = seeds,
+                      rho = 0)
+
+
+# df <- filter(df,year>0)
+
+ggplot(df,aes(x=s1,y=s2))+
+  geom_point()+
+  labs(title=paste0("Microhabitat effect strength = ",asp.mag,"\nClimate SD = ", clim.sd))
+ggsave(h=8,w=8,filename = paste0("figs/clim",clim.sd,"_microhab",asp.mag,".png"))
+
+clim.sds = seq(3,15,1)
+out_df <- NULL
+for(i in 1:length(clim.sds)){
+  
+  print(i)
+  df = simfun_exponential(burn.in.yrs=0,
+                        sim.yrs=500,
+                        n.subpops=n.subpops,
+                        asp.effects = c(-1,1),
+                        clim.sd=clim.sds[i],
+                        asp.mag=asp.mag,
+                        move.mx = move.mx,
+                        seeds = seeds,
+                        rho = 0)
+  
+  out_df = rbind(out_df,df)
+}
+
+ggplot(out_df,aes(x=s1,y=s2))+
+  geom_point()+
+  facet_wrap(~clim.sd)
+
+hist(rnorm(10000,0,6),breaks=50)
+
+cor_df = out_df %>% 
+  filter(clim.sd>0) %>% 
+  group_by(clim.sd,asp.mag) %>% 
+  summarize(cor = cor(s1,s2))
+
+ggplot(cor_df,aes(x=clim.sd,y=cor))+
+  geom_point()+
+  geom_line()
+```
 
 
 ```{r}
