@@ -283,3 +283,63 @@ ggplot(clims,aes(x = years))+
 ```
 
 
+
+```{r}
+move.mx = moveMx_fun(2,data.frame(AtoB=0.01,BtoA=0.01))
+asp.mag = 16
+clim.sd = 12
+seeds = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag]
+out_df = NULL
+
+df = simfun_exponential(burn.in.yrs=0,
+                      sim.yrs=200,
+                      n.subpops=n.subpops,
+                      asp.effects = c(-1,1),
+                      clim.sd=clim.sd,
+                      asp.mag=asp.mag,
+                      move.mx = move.mx,
+                      seeds = seeds,
+                      rho = 0)
+
+
+# df <- filter(df,year>0)
+
+ggplot(df,aes(x=s1,y=s2))+
+  geom_point()+
+  labs(title=paste0("Microhabitat effect strength = ",asp.mag,"\nClimate SD = ", clim.sd))
+ggsave(h=8,w=8,filename = paste0("figs/clim",clim.sd,"_microhab",asp.mag,".png"))
+
+clim.sds = seq(3,15,1)
+out_df <- NULL
+for(i in 1:length(clim.sds)){
+  
+  print(i)
+  df = simfun_exponential(burn.in.yrs=0,
+                        sim.yrs=500,
+                        n.subpops=n.subpops,
+                        asp.effects = c(-1,1),
+                        clim.sd=clim.sds[i],
+                        asp.mag=asp.mag,
+                        move.mx = move.mx,
+                        seeds = seeds,
+                        rho = 0)
+  
+  out_df = rbind(out_df,df)
+}
+
+ggplot(out_df,aes(x=s1,y=s2))+
+  geom_point()+
+  facet_wrap(~clim.sd)
+
+hist(rnorm(10000,0,6),breaks=50)
+
+cor_df = out_df %>% 
+  filter(clim.sd>0) %>% 
+  group_by(clim.sd,asp.mag) %>% 
+  summarize(cor = cor(s1,s2))
+
+ggplot(cor_df,aes(x=clim.sd,y=cor))+
+  geom_point()+
+  geom_line()
+```
+
