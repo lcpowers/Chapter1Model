@@ -191,7 +191,7 @@ S2_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","Env
         
       }
 stopCluster(cl)
-write_csv(S2_out_df,paste0("SimOutput/ExpGrowth_SymMovement_AsymMicrohabs/",round(Sys.time()),".csv"))
+write_csv(S2_out_df,paste0("SimOutput/S2_",round(Sys.time()),".csv"))
 ```
 
 
