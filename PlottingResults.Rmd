@@ -1,18 +1,171 @@
 ---
 title: "Plotting simulation results"
 output: html_document
-date: "2024-12-12"
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
+```{r pacakges_data, include=FALSE}
+library(tidyverse)
+library(pals)
+library(randomcoloR)
 
+rm(list=ls())
+
+
+s1 <- read_csv("SimOutput/S1_2024-12-12 13:37:18.csv")
+s1_plot <- s1 %>% 
+group_by(clim.sd,asp.mag,move.rate = AtoB,rho) %>% 
+  summarize(agg.pop.var = mean(pop.var),
+            mean.corr = mean(sub.corr,na.rm = T),
+            pop.lam = mean(lt.pop.lam)) %>% 
+  mutate(asp.effects = c("-1, +1"))
+
+s2 <- read_csv("SimOutput/S2_2024-12-12 14:32:17.csv")
+s2_plot <- s2 %>% 
+group_by(clim.sd,asp.mag,move.rate = AtoB,rho) %>% 
+  summarize(agg.pop.var = mean(pop.var),
+            mean.corr = mean(sub.corr,na.rm = T),
+            pop.lam = mean(lt.pop.lam)) %>% 
+  mutate(asp.effects = c("-1, +1"))
+```
+
+```{r plot_theme, include=FALSE}
+
+plot_theme <- function() {
+  theme(
+    panel.border = element_rect(colour = "black", fill = NA, linetype = 1),
+    panel.background = element_rect(fill = "white"),
+    strip.background = element_rect(fill="white",color="black"),
+    panel.grid.major.y = element_line(colour = "gray90", linetype = 3, linewidth = 0.5),
+    panel.grid.minor.y = element_line(colour = "gray90", linetype = 3, linewidth = 0.5),
+    panel.grid.major.x =  element_blank(),
+    panel.grid.minor.x = element_blank()
+  )
+}
+
+binwidth = 0.1
+contour_colors <- function(df,binwidth){
+  
+  limits <- round(max(abs(1 - df$pop.lam)) * c(-1, 1) + 1,1)
+  breaks <- seq(min(limits),max(limits),by=binwidth)
+  pal <- brewer.spectral(n = length(breaks))
+  
+  }
+
+```
+
+---
+
+### Scenario 1
+ - Symmetrical movement between sub-populations
+ - Symmetrical aspect effects
+ - Exponential growth
+ 
+#### Basic dynamics
+ - climate autocorrelation = 0.25
+ - movement rate = 0.1
+```{r S1_filter}
+rho1 = 0
+move.rates = c(0,0.04,0.1)
+asp.mags = c(0,5,9,10,11,12,13,15)
+
+s1_plot2 <- s1_plot %>% filter(move.rate%in%move.rates & rho == rho1&asp.mag%in%asp.mags)
+```
+
+---
+
+#### *What are basic dynamics between movement, climate standard deviation, and micro.habitat effects?*
+ - This is assuming no autocorrelation in climate
+```{r S1.mean, fig.height=5, fig.width=10}
+ ggplot(s1_plot2,aes(x=clim.sd,y=pop.lam,color=factor(move.rate*100)))+
+  geom_line()+
+  facet_wrap(~asp.mag,nrow=1)+
+  plot_theme()+
+  labs(x = "Climate standard deviation", y = "Long-term population lambda",
+       color="Movement rate (%)",title="Long-term lambda by climate standard deviation (x-axis),\nmovement rates (line colors), and microhabitat effects (sub-panels)")
+```
+
+**- Movement between microclimates increases peak lambda values when microhabitat effects are strong.**
+
+---
+
+```{r S1.var, fig.height=5, fig.width=10}
+ggplot(s1_plot2,aes(x=clim.sd,y=agg.pop.var,color=factor(move.rate*100)))+
+  geom_line()+
+  facet_wrap(~asp.mag,nrow=1)+
+  plot_theme()+
+  labs(x = "Climate standard deviation", y = "Variance in long-term population lambda",
+       color="Movement rate (%)",
+       title = "VARIANCE in lambda by climate standard deviation (x-axis), \nmovement rates (line colors), and microhabitat effects (sub-panels)")
+```
+
+\
+ **- Variance in long-term lambda increases with the strength of micro-habitat effects. For a given microhabitat effect, movement between micro-climates reduces variance, and that reduction appears to scale with microhabitat effect strengths to some degree.**
+\
+
+--- 
+
+#### *How does climate autocorrelation change this?*
+```{r S2.clim.autocorr.lambda}
+move.rates = c(0,0.04)
+asp.mags = c(0,5,10,15)
+
+s1_plot2 <- s1_plot %>% filter(move.rate%in%move.rates & asp.mag%in%asp.mags)
+
+ggplot(s1_plot2,aes(x=clim.sd,y=pop.lam,color=factor(rho)))+
+  geom_line()+
+  facet_grid(move.rate~asp.mag)+
+  plot_theme()
+```
+ 
+ - If there is movement between microclimates (lower row), autocorrelation in climate increases long-term lambda values when microhabitat effects are high. Without movement it looks like autocorrelation has essentially no effect on long-term lambda for any microhabitat effect strengths.
+\
+#### How does climate autocorrelation change this?
+
+```{r S1.clim.autocorr.var, fig.width=10}
+move.rates = c(0,0.04)
+asp.mags = c(0,5,10,15)
+
+s1_plot2 <- s1_plot %>% filter(move.rate%in%move.rates & asp.mag%in%asp.mags)
+
+ggplot(s1_plot2,aes(x=clim.sd,y=agg.pop.var,color=factor(rho)))+
+  #geom_point()+
+  geom_line()+
+  # geom_smooth()+
+  facet_grid(move.rate~asp.mag)+
+  plot_theme()+
+  labs(title="Variance in lambda values by:
+       - climate standard deviation (x axis),
+       - climate auto-correlation (line colors),
+       - microhabitat effects (sub-plot columns),
+       - and movement rates (sub-plot rows)")
+```
+\
+    - Interestingly, variance in lambdas is also higher with climate autocorrelation. 
+
+```{r S1}
+move.rates <- c(0.04)
+asp.mags <- seq(10,20,1)
+rho1 <- c(0.25)
+
+s1_plot2 <- s1_plot %>% filter(move.rate%in%move.rates & asp.mag%in%asp.mags & rho%in%rho1)
+
+ggplot(s1_plot2,aes(x=clim.sd,y=mean.corr,color=factor(asp.mag)))+
+  geom_point()+
+  geom_line()+
+  scale_color_viridis_d()
+```
+\
+    - The correlation between annual subpopulation lambdas decreases from 1 as microhabitat effects increase. The rate of decline is slower 
 
 ```{r}
 
-S1 <- read_csv()
+ggplot(S1_out_df,aes(x=clim))+
+  geom_histogram()+
+  facet_wrap(~clim.sd)
 
 ```
 

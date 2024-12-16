@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Set-up
 ```{r start}
-rm(list=ls())
+# rm(list=ls())
 
 # Packages
 library(tidyverse)
@@ -36,25 +36,25 @@ seeds_df <- read_csv("seedSearchOutput/seedSearch_2024-11-14 10:03:24.033834.csv
 ## Scenario 1: Exponential growth, symmetrical movement, symmetrical aspect effects
 ```{r Scen1}
 # Things needed to run sim function line by line
-clim.sd.i <- clim.sd <- 1
-asp.mag <- asp.mag.i <- 2
-rep = 1
-move.rates.row <- 2
-rho <- 0.25
+# clim.sd.i <- clim.sd <- 1
+# asp.mag <- asp.mag.i <- 2
+# rep = 1
+# move.rates.row <- 2
+# rho <- 0.25
 
 # Sim. function inputs
 burn.in.yrs <- 100
 sim.yrs <- 500
 asp.effects <- c(-1,1)
 n.subpops <- length(asp.effects)
-reps <- 5
+reps <- 10
 clim.sds <- seq(0,20,by=1);clim.sds[clim.sds==0] <- 0.001
 asp.mags <- seq(0,20,by=1)
 rhos <- c(0,0.25,0.5)
 
 ## Creating all combinations of movement rates
 subpop.names = LETTERS[1:n.subpops] # Name subpops with letters
-move.rates = seq(0,0.1,0.02)
+move.rates = seq(0,0.1,0.025)
 move.dirs = expand.grid(from=subpop.names,to=subpop.names) %>% # get all combos
   # Remove rows that imply no movement (A to A)
   filter(from!=to) %>% 
@@ -117,6 +117,73 @@ stopCluster(cl)
 write_csv(S1_out_df,paste0("SimOutput/S1_",round(Sys.time()),".csv"))
 ```
 
+S1 Deep dive
+```{r s1.deepdive}
+
+# Sim. function inputs
+burn.in.yrs <- 100
+sim.yrs <- 500
+asp.effects <- c(-1,1)
+n.subpops <- length(asp.effects)
+reps <- 5
+clim.sds <- seq(0,10,by=1);clim.sds[clim.sds==0] <- 0.001
+asp.mags <- 20
+rhos <- 0
+
+## Creating all combinations of movement rates
+subpop.names = LETTERS[1:n.subpops] # Name subpops with letters
+move.rates = 0.025
+move.dirs = expand.grid(from=subpop.names,to=subpop.names) %>% # get all combos
+  # Remove rows that imply no movement (A to A)
+  filter(from!=to) %>% 
+   # Concatenate
+  mutate(col.names = paste0(from,"to",to)) %>% 
+  # save last column as a vector
+  arrange(col.names) %>% pull() 
+
+# Create movement data.frame to loop over
+move.rates.df = matrix(data=rep(move.rates,length(move.dirs)),ncol=length(move.dirs)) %>% # generate matrix with movement rates
+  as.data.frame() %>% 
+  # Make all combos of movement rates
+  expand.grid() %>% 
+  filter(if_all(starts_with("V"),~ .==V1)) ## This filters for symmetrical movement rates
+names(move.rates.df)=move.dirs # rename columns to make movement direction clear
+rm(subpop.names,move.dirs,move.rates) # remove extra things from env
+
+#### Run S1 #####
+cl = makeCluster(5)
+registerDoParallel(cl = cl)
+
+S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
+  foreach(move.rates.row = 1:nrow(move.rates.df), .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
+    foreach(clim.sd.i = clim.sds, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
+      foreach(asp.mag.i = asp.mags, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
+        foreach(rho.i = rhos,.combine = rbind,.packages=c("tidyverse","EnvStats")) %dopar% {
+
+        move.rates.i <- move.rates.df[move.rates.row,]
+        
+        ##### Create a movement matrix from the move.rates row
+        move.mx.i <- moveMx_fun(n.subpops,move.rates.i)
+        
+        seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i]
+        
+        df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops,asp.effects = asp.effects,
+                            clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i)
+        
+        df = df %>%
+          filter(year>burn.in.yrs) %>% # Filter out burn-in years. This could also happen within the function.
+          mutate(clim.sd = clim.sd.i,
+                 rho = rho.i,
+                 asp.mag = asp.mag.i,
+                 rep = rep,
+                 move.rate = move.rates.df$AtoB[1])
+        return(df)
+        # rm(df,tmp.df,clim.sd.i,asp.mag.i,move.rate.i)
+        
+      }
+stopCluster(cl)
+# write_csv(S1_out_df,paste0("SimOutput/S1_deepDive_",round(Sys.time()),".csv"))
+```
 
 ## Scenario 2: Exponential growth, symmetrical movement, Asymmetrical aspect effects
 ```{r Scen1}
@@ -342,41 +409,105 @@ ggplot(cor_df,aes(x=clim.sd,y=cor))+
 ```{r}
 rm(list=ls())
 years <- 100
-clim.sd <- 1
+clim.sd <- 10
 e_old <- rnorm(1,mean=0,sd=clim.sd)
-rho <- 0.8
+rho <- 0.5
+bounds <- c(-50, 50)
 
-clims <- data.frame(years = 1:100,
+clims <- data.frame(years = 1:years,
                     clim = NA,
                     clim.cor = NA)
 
 
 for(i in 1:years){
   
-  # Random climate draw for this year
-  z_t <- rnorm(1,mean=0,sd=clim.sd)
+  # Generate new value based on previous value and random noise
   
-  # store that for comparison
+  z_t <- rnorm(1, mean = 0, sd = clim.sd)
   clims$clim[i] <- z_t
   
-  # M&D equation 4.16 (pg. 139) 
-  e_new <- rho*e_old + clim.sd*(1 - rho^2)^(1/2)*z_t
-  
-  # Store that
+  e_new <- rho * e_old + z_t
   clims$clim.cor[i] <- e_new
   
-  # Make this years adjusted clim last years
   e_old <- e_new
-  
-  # Remove this years
   rm(e_new)
+  
+  # # Random climate draw for this year
+  # z_t <- rnorm(1,mean=0,sd=clim.sd)
+  # 
+  # # store raw climate variable
+  # clims$clim[i] <- z_t
+  # 
+  # # scaling factor beta
+  # beta <- sqrt(1-rho^2)
+  # 
+  # # M&D equation 4.16 (pg. 139) 
+  # e_new <- rho*e_old + clim.sd*beta*z_t
+  # 
+  # # Clip extreme values to maintain realistic climate range
+  # e_new <- max(bounds[1], min(e_new, bounds[2]))
+  # 
+  # # Store that
+  # clims$clim.cor[i] <- e_new
+  # 
+  # # Make this years adjusted clim last years
+  # e_old <- e_new
+  # 
+  # # Remove this years
+  # rm(e_new)
   
 }
 
 ggplot(clims,aes(x = years))+
-  geom_line(aes(y=clim,color="clim"),linewidth=3,alpha=0.5)+
+  geom_line(aes(y=clim,color="clim"),linewidth=1,alpha=0.5)+
   geom_line(aes(y=clim.cor,color="clim.cor"))+
   ggthemes::theme_clean()+
   scale_color_manual(values=c("salmon2","black"))
+
+# Simulation loop for AR(1) process
+for (i in 2:years) {
+  
+  # Generate new value based on previous value and random noise
+  epsilon_t <- rnorm(1, mean = 0, sd = clim.sd)
+  clims$clim.cor[i] <- rho * clims$clim.cor[i - 1] + epsilon_t
+
+}
+
+rm(list = ls())
+
+# Start with an initial value for both autocorrelated and uncorrelated values
+clims$clim.cor[1] <- rnorm(1, mean = 0, sd = clim.sd)  # Autocorrelated start
+clims$clim.uncor[1] <- rnorm(1, mean = 0, sd = clim.sd)  # Uncorrelated start
+
+# Simulation loop for AR(1) process (autocorrelated values)
+for (i in 2:years) {
+  
+  # Generate new value for autocorrelated climate
+  epsilon_t <- rnorm(1, mean = 0, sd = clim.sd)
+  clims$clim.cor[i] <- rho * clims$clim.cor[i - 1] + epsilon_t
+  
+  # Generate new value for uncorrelated climate (random draw)
+  clims$clim.uncor[i] <- rnorm(1, mean = 0, sd = clim.sd)
+}
+
+
+# Reshape data for ggplot
+clims_long <- reshape2::melt(clims, id.vars = "years", 
+                             variable.name = "clim_type", 
+                             value.name = "clim_value")
+
+# Plot with ggplot
+ggplot(clims_long, aes(x = years, y = clim_value, color = clim_type)) +
+  geom_line() +
+  labs(title = "Comparison of Autocorrelated and Uncorrelated Climate Values",
+       y = "Climate Value", x = "Year") +
+  scale_color_manual(values = c("blue", "red"),
+                     labels = c("Autocorrelated (rho = 0.5)", "Uncorrelated")) +
+  theme_minimal() +
+  theme(legend.title = element_blank(), 
+        legend.position = "top")
+
+
+
 ```
 
