@@ -32,13 +32,20 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
       
       # yr = 1
       
+      z_t <- rnorm(1, mean = 0, sd = clim.sd)
+      
+      e_new <- rho * e_old + z_t
+      output_df$clim[yr] <- e_new
+      
+      ### Old way to add climate autocorrelation ###
       # Climate in this year
       # Random climate draw for this year
-      z_t <- rnorm(1,mean=0,sd=clim.sd)
-      
+      # z_t <- rnorm(1,mean=0,sd=clim.sd)
+      # 
       # M&D equation 4.16 (pg. 139) 
-      e_new <- rho*e_old + clim.sd*(1 - rho^2)^(1/2)*z_t
-
+      # e_new <- rho*e_old + clim.sd*((1 - rho^2)^(1/2))*z_t
+      ### End old way to add climate autocorrelation ###
+      
       # add climate value to output df
       output_df$clim[yr] = e_new
 
