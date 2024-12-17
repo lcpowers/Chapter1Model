@@ -15,7 +15,8 @@ library(randomcoloR)
 rm(list=ls())
 
 
-s1 <- read_csv("SimOutput/S1_2024-12-12 13:37:18.csv")
+s1 <- read_csv("SimOutput/S1_2024-12-16 16:31:13.csv") 
+  # read_csv("SimOutput/S1_2024-12-12 13:37:18.csv")
 s1_plot <- s1 %>% 
 group_by(clim.sd,asp.mag,move.rate = AtoB,rho) %>% 
   summarize(agg.pop.var = mean(pop.var),
@@ -69,7 +70,7 @@ contour_colors <- function(df,binwidth){
  - movement rate = 0.1
 ```{r S1_filter}
 rho1 = 0
-move.rates = c(0,0.04,0.1)
+move.rates = c(0,0.05,0.1)
 asp.mags = c(0,5,9,10,11,12,13,15)
 
 s1_plot2 <- s1_plot %>% filter(move.rate%in%move.rates & rho == rho1&asp.mag%in%asp.mags)
@@ -110,7 +111,7 @@ ggplot(s1_plot2,aes(x=clim.sd,y=agg.pop.var,color=factor(move.rate*100)))+
 
 #### *How does climate autocorrelation change this?*
 ```{r S2.clim.autocorr.lambda}
-move.rates = c(0,0.04)
+move.rates = c(0,0.05)
 asp.mags = c(0,5,10,15)
 
 s1_plot2 <- s1_plot %>% filter(move.rate%in%move.rates & asp.mag%in%asp.mags)
@@ -126,7 +127,7 @@ ggplot(s1_plot2,aes(x=clim.sd,y=pop.lam,color=factor(rho)))+
 #### How does climate autocorrelation change this?
 
 ```{r S1.clim.autocorr.var, fig.width=10}
-move.rates = c(0,0.04)
+move.rates = c(0,0.05)
 asp.mags = c(0,5,10,15)
 
 s1_plot2 <- s1_plot %>% filter(move.rate%in%move.rates & asp.mag%in%asp.mags)
@@ -147,7 +148,7 @@ ggplot(s1_plot2,aes(x=clim.sd,y=agg.pop.var,color=factor(rho)))+
     - Interestingly, variance in lambdas is also higher with climate autocorrelation. 
 
 ```{r S1}
-move.rates <- c(0.04)
+move.rates <- c(0.05)
 asp.mags <- seq(10,20,1)
 rho1 <- c(0.25)
 
@@ -165,6 +166,21 @@ ggplot(s1_plot2,aes(x=clim.sd,y=mean.corr,color=factor(asp.mag)))+
 
 ggplot(S1_out_df,aes(x=clim))+
   geom_histogram()+
+  facet_wrap(~clim.sd)
+
+ggplot(S1_out_df)+
+  geom_histogram(aes(x=s1),fill="dodgerblue3")+
+  geom_histogram(aes(x=s2),fill="salmon3")+
+  facet_wrap(~clim.sd)
+
+ggplot(filter(S1_out_df,rep==1,year%in%c(100:150)),aes(x=year))+
+  geom_line(aes(y=s1),color="dodgerblue")+
+  geom_line(aes(y=s2),color="salmon3")+
+  facet_wrap(~clim.sd)
+
+ggplot(filter(S1_out_df,rep==1),aes(x=clim))+
+  geom_line(aes(y=s1),color="dodgerblue")+
+  geom_line(aes(y=s2),color="salmon3")+
   facet_wrap(~clim.sd)
 
 ```
