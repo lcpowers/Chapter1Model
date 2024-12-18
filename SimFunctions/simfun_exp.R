@@ -26,17 +26,23 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
     pop.size = 1000
     pop.vec.t0 = rep(pop.size,3*n.subpops)
     
-    e_old <- rnorm(1, mean=0, sd=clim.sd)
+    # e_old <- rnorm(1, mean=0, sd=clim.sd)
+    
+    if(rho==0){
+      clims = rnorm(years,mean=0,sd=clim.sd)
+    } else if(rho>0){
+      clims <- arima.sim(n = years, list(ar = rho), sd = clim.sd)
+    }
     
     for(yr in 1:years){
       
-      # yr = 1
-      
-      z_t <- rnorm(1, mean = 0, sd = clim.sd)
-      
-      e_new <- rho * e_old + z_t
-      output_df$clim[yr] <- e_new
-      
+      # # yr = 1
+      # 
+      # z_t <- rnorm(1, mean = 0, sd = clim.sd)
+      # 
+      # e_new <- rho * e_old + z_t
+      # output_df$clim[yr] <- e_new
+      # 
       ### Old way to add climate autocorrelation ###
       # Climate in this year
       # Random climate draw for this year
@@ -45,15 +51,15 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
       # M&D equation 4.16 (pg. 139) 
       # e_new <- rho*e_old + clim.sd*((1 - rho^2)^(1/2))*z_t
       ### End old way to add climate autocorrelation ###
-      
+      # 
       # add climate value to output df
-      output_df$clim[yr] = e_new
+      output_df$clim[yr] = clims[yr]
 
       # Add the climate value to survival and growth function parameter lists
-      surv_params.n$clim = growth_params.n$clim = e_new
+      surv_params.n$clim = growth_params.n$clim = clims[yr]
       
       # Make this years adjusted clim last years & Remove this years
-      e_old <- e_new;rm(e_new)
+      # e_old <- e_new;rm(e_new)
       
       # Initiate a full population MX for current year
       pop.mx = matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)

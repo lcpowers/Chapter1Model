@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 Set-up
 ```{r start}
-# rm(list=ls())
+rm(list=ls())
 
 # Packages
 library(tidyverse)
@@ -35,7 +35,7 @@ seeds_df <- read_csv("seedSearchOutput/seedSearch_2024-11-14 10:03:24.033834.csv
 
 ## Scenario 1: Exponential growth, symmetrical movement, symmetrical aspect effects
 ```{r Scen1}
-# Things needed to run sim function line by line
+# # Things needed to run sim function line by line
 # clim.sd.i <- clim.sd <- 1
 # asp.mag <- asp.mag.i <- 2
 # rep = 1
@@ -50,7 +50,7 @@ n.subpops <- length(asp.effects)
 reps <- 10
 clim.sds <- seq(0,20,by=1);clim.sds[clim.sds==0] <- 0.001
 asp.mags <- seq(0,20,by=1)
-rhos <- c(0,0.25,0.5)
+rhos <- seq(0,0.5,0.1)
 
 ## Creating all combinations of movement rates
 subpop.names = LETTERS[1:n.subpops] # Name subpops with letters
@@ -89,7 +89,7 @@ S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","Env
         
         seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i]
         
-        df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops,asp.effects = asp.effects,
+        df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops, asp.effects = asp.effects,
                             clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i)
         
         tmp.df = df %>%
@@ -192,16 +192,16 @@ stopCluster(cl)
 # Sim. function inputs
 burn.in.yrs <- 100
 sim.yrs <- 500
-asp.effects <- c(-1,2)
+asp.effects <- c(-2,1)
 n.subpops <- length(asp.effects)
-reps <- 2
+reps <- 10
 clim.sds <- seq(0,20,by=1);clim.sds[clim.sds==0] <- 0.001
 asp.mags <- seq(0,20,by=1)
-rhos <- c(0,0.25,0.5)
+rhos <- seq(0,0.5,0.1)
 
 ## Creating all combinations of movement rates
 subpop.names = LETTERS[1:n.subpops] # Name subpops with letters
-move.rates = seq(0,0.1,0.02)
+move.rates = seq(0,0.1,0.025)
 move.dirs = expand.grid(from=subpop.names,to=subpop.names) %>% # get all combos
   # Remove rows that imply no movement (A to A)
   filter(from!=to) %>% 
@@ -411,58 +411,87 @@ rm(list=ls())
 years <- 100
 clim.sd <- 10
 e_old <- rnorm(1,mean=0,sd=clim.sd)
-rho <- 0.5
-bounds <- c(-50, 50)
+e_old.AR1 <- e_old.log <- rnorm(1,mean=0,sd=clim.sd)
+rho <- 0.75
+beta <- sqrt(1-rho^2)
 
-clims <- data.frame(years = 1:years,
+a <- arima.sim(n=100, list(ar=c(0.5)))
+b <- arima.sim()
+plot(a)
+
+ar_sd1 <- arima.sim(n = 100, list(ar = 0.5), sd = 1)
+ar_sd10 <- arima.sim(n = 100, list(ar = 0.5), sd = 10)
+
+clims <- data.frame(year = 1:years,
                     clim = NA,
+                    # clim.cor.AR1 = NA,
+                    # clim.cor.log = NA,
                     clim.cor = NA)
 
+x <- arima.sim(model = list(ar=0.1), n = 100)
+plot(x)
 
 for(i in 1:years){
-  
-  # Generate new value based on previous value and random noise
-  
-  z_t <- rnorm(1, mean = 0, sd = clim.sd)
-  clims$clim[i] <- z_t
-  
-  e_new <- rho * e_old + z_t
-  clims$clim.cor[i] <- e_new
-  
-  e_old <- e_new
-  rm(e_new)
-  
-  # # Random climate draw for this year
-  # z_t <- rnorm(1,mean=0,sd=clim.sd)
   # 
-  # # store raw climate variable
+  # # Generate new value based on previous value and random noise
+  # 
+  # # select and store raw climate variable
+  # z_t <- rnorm(1, mean = 0, sd = clim.sd)
   # clims$clim[i] <- z_t
+  # 
+  # e_new <- rho * e_old.AR1 + z_t
+  # clims$clim.cor.AR1[i] <- e_new
+  # 
+  # e_old.AR1 <- e_new
+  # rm(e_new)
   # 
   # # scaling factor beta
   # beta <- sqrt(1-rho^2)
   # 
-  # # M&D equation 4.16 (pg. 139) 
-  # e_new <- rho*e_old + clim.sd*beta*z_t
+  # # M&D equation 4.16 (pg. 139)
+  # e_new <- rho*e_old.log + log(clim.sd)*beta*z_t
   # 
-  # # Clip extreme values to maintain realistic climate range
-  # e_new <- max(bounds[1], min(e_new, bounds[2]))
-  # 
+  # # # Clip extreme values to maintain realistic climate range
+  # # e_new <- max(bounds[1], min(e_new, bounds[2]))
+  # # 
   # # Store that
-  # clims$clim.cor[i] <- e_new
+  # clims$clim.cor.log[i] <- e_new
   # 
-  # # Make this years adjusted clim last years
-  # e_old <- e_new
+  # # # Make this years adjusted clim last years
+  # e_old.log <- e_new
   # 
   # # Remove this years
   # rm(e_new)
   
+  ### Trying doak way again
+  
+  z_t <- rnorm(1)
+  e_new <- rho*e_old + clim.sd*beta*z_t
+  clims$clim.cor[i] <- e_new
+  e_old <- e_new;rm(e_new)  
+  
 }
+
+ggplot(clims,aes(x=year))+
+  geom_point(aes(y=clim))+
+  geom_line(aes(y=clim))+
+   geom_point(aes(y=clim.cor))+
+  geom_line(aes(y=clim.cor))
+  
 
 ggplot(clims,aes(x = years))+
   geom_line(aes(y=clim,color="clim"),linewidth=1,alpha=0.5)+
-  geom_line(aes(y=clim.cor,color="clim.cor"))+
+  geom_point(aes(y=clim,color="clim"),alpha=0.5)+
+  geom_line(aes(y=clim.cor.AR1,color="AR1"))+
+  geom_point(aes(y=clim.cor.AR1,color="AR1"))+
+  geom_line(aes(y=clim.cor.log,color="log"))+
+  geom_point(aes(y=clim.cor.log,color="log"))+
   ggthemes::theme_clean()+
-  scale_color_manual(values=c("salmon2","black"))
+  scale_color_manual(values=c("salmon2","black","dodgerblue"))
+
+ggplot(clims)+
+  geom_histogram(aes(x=clim),fill="grey50",color="black",alpha=0.25)+
+  geom_histogram(aes(x=clim.cor.AR1),fill="salmon",color="black",alpha=0.5)
 
 # Simulation loop for AR(1) process
 for (i in 2:years) {
