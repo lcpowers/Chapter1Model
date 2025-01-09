@@ -1,4 +1,31 @@
-moveMx_fun = function(n.subpops,move.rates){
+moveMx_fun = function(n.subpops,move.rate,symmetrical=TRUE){
+  
+  ## Creating all combinations of movement rates
+  subpop.names = LETTERS[1:n.subpops] # Name subpops with letters
+  
+  move.dirs = expand.grid(from=subpop.names,to=subpop.names) %>% # get all combos
+    # Remove rows that imply no movement (A to A)
+    filter(from!=to) %>% 
+    # Concatenate
+    mutate(col.names = paste0(from,"to",to)) %>% 
+    # save last column as a vector
+    arrange(col.names) %>% pull() 
+  
+  # Create movement data.frame to loop over
+  move.rates.df = matrix(data=rep(move.rate,length(move.dirs)),ncol=length(move.dirs)) %>% # generate matrix with movement rates
+    as.data.frame() %>% 
+    # Make all combos of movement rates
+    expand.grid()
+  
+  if(symmetrical==T){
+    
+    ## This filters for symmetrical movement rates
+    move.rates.df <- move.rates.df %>% filter(if_all(starts_with("V"),~ .==V1))
+    
+  }
+  
+  names(move.rates.df)=move.dirs # rename columns to make movement direction clear
+  rm(subpop.names,move.dirs,move.rate) 
   
   # Tell me if move rates != number of subpops
   # stopifnot("Number of movement rates not equal to number of subpops"=length(move.rates)==n.subpops)
@@ -21,7 +48,7 @@ moveMx_fun = function(n.subpops,move.rates){
     for(k in other.subpops){
       
       # From the list of movement rates, get the from I to J movement value
-      move.rate.k = move.rates[[paste0(LETTERS[j],"to",LETTERS[k])]] %>% unlist()
+      move.rate.k = move.rates.df[[paste0(LETTERS[j],"to",LETTERS[k])]] %>% unlist()
       
       # Row k is the pop moving to
       # Col j is the pop moving from
