@@ -25,97 +25,107 @@ source("SimFunctions/moveMx_fun.R")
 source("SimFunctions/simfun_exp.R")
 source("ModelFunctions/ParamVals.R")
 source("ModelFunctions/subpop_mx_fun.R")
-seeds_df <- read_csv("seedSearchOutput/seedSearch_2024-11-14 10:03:24.033834.csv") %>% 
-  rbind(.,read_csv("seedSearchOutput/seedSearch_2024-12-05 10:08:25.870686.csv")) %>% 
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2024-12-22 05:52:10.326616.csv") %>% 
   mutate(seeds2 = floor(seeds)) %>% 
-  group_by(asp.mag) %>% 
+  group_by(asp.effects,asp.mag,clim.sd) %>% 
   summarize(avg.seeds = round(mean(seeds)))
 
 ```
 
 ## Scenario 1: Exponential growth, symmetrical movement, symmetrical aspect effects
 ```{r Scen1}
-# # Things needed to run sim function line by line
-# clim.sd.i <- clim.sd <- 1
-# asp.mag <- asp.mag.i <- 2
-# rep = 1
-# move.rates.row <- 2
-# rho <- 0.25
 
 # Sim. function inputs
 burn.in.yrs <- 100
 sim.yrs <- 500
-asp.effects <- c(-1,1)
-n.subpops <- length(asp.effects)
+
+asp.effects <- list(c(0),
+                    c(-1,1),
+                    c(-2,1),
+                    c(-1,0,1),
+                    c(-2,0,1),
+                    seq(-2,1,by=1),
+                    seq(-2,2,1))
+
 reps <- 10
-clim.sds <- seq(0,20,by=1);clim.sds[clim.sds==0] <- 0.001
+clim.sds <- seq(0,25,by=1);clim.sds[clim.sds==0] <- 0.001
 asp.mags <- seq(0,20,by=1)
-rhos <- seq(0,0.5,0.25)
+rhos <- seq(0,0.1,0.025)
+move.rates <- seq(0,0.1,0.025)
 
-## Creating all combinations of movement rates
-subpop.names = LETTERS[1:n.subpops] # Name subpops with letters
-move.rates = seq(0,0.1,0.025)
-move.dirs = expand.grid(from=subpop.names,to=subpop.names) %>% # get all combos
-  # Remove rows that imply no movement (A to A)
-  filter(from!=to) %>% 
-   # Concatenate
-  mutate(col.names = paste0(from,"to",to)) %>% 
-  # save last column as a vector
-  arrange(col.names) %>% pull() 
-
-# Create movement data.frame to loop over
-move.rates.df = matrix(data=rep(move.rates,length(move.dirs)),ncol=length(move.dirs)) %>% # generate matrix with movement rates
-  as.data.frame() %>% 
-  # Make all combos of movement rates
-  expand.grid() %>% 
-  filter(if_all(starts_with("V"),~ .==V1)) ## This filters for symmetrical movement rates
-names(move.rates.df)=move.dirs # rename columns to make movement direction clear
-rm(subpop.names,move.dirs,move.rates) # remove extra things from env
+# # Things needed to run sim function line by line
+# clim.sd.i <- clim.sd <- 1
+# asp.mag <- asp.mag.i <- 2
+# rep = 1
+# rho.i <- 0.25
+# asp.eff.i = 2
 
 #### Run S1 #####
 cl = makeCluster(20)
 registerDoParallel(cl = cl)
 
 S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
-  foreach(move.rates.row = 1:nrow(move.rates.df), .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
-    foreach(clim.sd.i = clim.sds, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
-      foreach(asp.mag.i = asp.mags, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
-        foreach(rho.i = rhos,.combine = rbind,.packages=c("tidyverse","EnvStats")) %dopar% {
+  foreach(asp.eff.i = 1:length(asp.effects), .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
+    foreach(move.rate.i = move.rates, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
+      foreach(clim.sd.i = clim.sds, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
+        foreach(asp.mag.i = asp.mags, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
+          foreach(rho.i = rhos,.combine = rbind,.packages=c("tidyverse","EnvStats")) %dopar% {
 
-        move.rates.i <- move.rates.df[move.rates.row,]
-        
-        ##### Create a movement matrix from the move.rates row
-        move.mx.i <- moveMx_fun(n.subpops,move.rates.i)
-        
-        seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i]
-        
-        df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops, asp.effects = asp.effects,
-                            clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i)
-        
-        tmp.df = df %>%
-          filter(year>burn.in.yrs) %>% # Filter out burn-in years. This could also happen within the function.
-          summarise(clim.mean = mean(clim),
-                    clim.var = var(clim),
-                    pop.var = var(pop.lam),
-                    lt.pop.lam = geoMean(pop.lam),
-                    sub.corr = cor(s1,s2),
-                    sum.s1.lam.dev = sum(s1-1),
-                    sum.s2.lam.dev = sum(s2-1),
-                    sum.all.lam.dev = sum(c(sum(s1-1),sum(s2-1))),
-                    mean.lam.dev = mean(c(sum(s1-1),sum(s2-1)))) %>% 
-          mutate(clim.sd = clim.sd.i,
-                 rho = rho.i,
-                 asp.mag = asp.mag.i,
-                 rep = rep,
-                 asp.effects = list(asp.effects)) %>% 
-          merge(.,move.rates.i)
-        return(tmp.df)
-        # rm(df,tmp.df,clim.sd.i,asp.mag.i,move.rate.i)
+            asp.effects.i <- asp.effects[asp.eff.i] %>% unlist()
+            n.subpops.i <- length(asp.effects.i)
+            
+            # move.rates.i <- move.rates.df[move.rates.row,]
+          
+            ##### Create a movement matrix from the move.rates row
+            move.mx.i <- moveMx_fun(n.subpops.i,move.rate.i)
+          
+            seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i & seeds_df$asp.effects == paste(asp.effects.i,collapse = ",")]
+          
+            df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops.i, asp.effects = asp.effects.i,
+                                clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i)
+            
+            tmp.df = df %>%
+              filter(year>burn.in.yrs) %>% # Filter out burn-in years. This could also happen within the function.
+              summarise(clim.mean = mean(clim),
+                        clim.var = var(clim),
+                        pop.var = var(pop.lam),
+                        lt.pop.lam = geoMean(pop.lam)) %>% 
+              mutate(asp.effect = list(asp.effects.i),
+                     asp.mag = asp.mag.i,
+                     clim.sd = clim.sd.i,
+                     rho = rho.i,
+                     rep = rep) %>% 
+              merge(.,move.rate.i)
+            return(tmp.df)
+            # rm(df,tmp.df,clim.sd.i,asp.mag.i,move.rate.i)
         
       }
 stopCluster(cl)
 write_csv(S1_out_df,paste0("SimOutput/S1_",round(Sys.time()),".csv"))
 ```
+
+```{r}
+
+test <- sample_n(S1_out_df,size = 10)
+
+S1_out_df$asp.effect2 <- NA
+
+for(i in 1:nrow(S1_out_df)){
+  
+  if(i%%10000==0){print(i)}
+  S1_out_df$asp.effect2[i] <- paste(unlist(S1_out_df$asp.effect[i]),collapse=",")
+  
+}
+
+for(i in 1:length(asp.effects)){
+  
+  ae.i <- paste(unlist(asp.effects[[i]]),collapse=",")
+  tmp <- filter(S1_out_df,asp.effect2 == ae.i)
+  write_csv(tmp,paste0("SimOutput/asp_effect_output/aspeff_",ae.i,"_2025-01-07.csv"))
+  
+}
+```
+
 
 S1 Deep dive
 ```{r s1.deepdive}
