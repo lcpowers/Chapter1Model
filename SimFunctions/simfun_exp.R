@@ -26,13 +26,22 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
     pop.size = 1000
     pop.vec.t0 = rep(pop.size,3*n.subpops)
     
+    x <- rnorm(years*0.25)
+    y <- runif(years*0.75,min=min(x),max=max(x))
+    z_ts <- c(x,y)
+    # plot(z_ts)
+    # hist(z_ts)
+    
+    z_ts <- sample(x = z_ts, size = years, replace = F)
+    # plot(z_ts)
+
     e_old <- rnorm(1, mean=0, sd=clim.sd)
     beta <- sqrt(1-rho^2) # rho is a function parameter
     
     for(yr in 1:years){
 
       # Generate new value based on previous value and random noise
-      z_t <- rnorm(1)
+      z_t <- z_ts[yr]  # rnorm(1)
       e_new <- rho*e_old + clim.sd*beta*z_t
       
       # add climate value to output df
