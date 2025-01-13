@@ -13,7 +13,7 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
                            rho = rho,
                            clim = NA,
                            pop.lam = NA)
-    output_df[paste0("s",1:n.subpops)] <- NA
+    output_df[paste0("s_",asp.effects.i)] <- NA
     
     # Define model params
     surv_params.n = surv_params
@@ -26,40 +26,21 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
     pop.size = 1000
     pop.vec.t0 = rep(pop.size,3*n.subpops)
     
-    # e_old <- rnorm(1, mean=0, sd=clim.sd)
-    
-    if(rho==0){
-      clims = rnorm(years,mean=0,sd=clim.sd)
-    } else if(rho>0){
-      clims <- arima.sim(n = years, list(ar = rho), sd = clim.sd)
-    }
+    e_old <- rnorm(1, mean=0, sd=clim.sd)
+    beta <- sqrt(1-rho^2) # rho is a function parameter
     
     for(yr in 1:years){
+
+      # Generate new value based on previous value and random noise
+      z_t <- rnorm(1)
+      e_new <- rho*e_old + clim.sd*beta*z_t
       
-      # # yr = 1
-      # 
-      # z_t <- rnorm(1, mean = 0, sd = clim.sd)
-      # 
-      # e_new <- rho * e_old + z_t
-      # output_df$clim[yr] <- e_new
-      # 
-      ### Old way to add climate autocorrelation ###
-      # Climate in this year
-      # Random climate draw for this year
-      # z_t <- rnorm(1,mean=0,sd=clim.sd)
-      # 
-      # M&D equation 4.16 (pg. 139) 
-      # e_new <- rho*e_old + clim.sd*((1 - rho^2)^(1/2))*z_t
-      ### End old way to add climate autocorrelation ###
-      # 
       # add climate value to output df
-      output_df$clim[yr] = clims[yr]
+      output_df$clim[yr] = e_new
 
       # Add the climate value to survival and growth function parameter lists
-      surv_params.n$clim = growth_params.n$clim = clims[yr]
-      
-      # Make this years adjusted clim last years & Remove this years
-      # e_old <- e_new;rm(e_new)
+      surv_params.n$clim = growth_params.n$clim = e_new
+      e_old <- e_new;rm(e_new)
       
       # Initiate a full population MX for current year
       pop.mx = matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
@@ -78,7 +59,7 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
         # Re(eigen(subpop.mx)$values[1])
         start.cell = start.cells[n]
         pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
-        output_df[yr,paste0("s",n)] <- Re(eigen(subpop.mx)$values[1])
+        output_df[yr,paste0("s_",asp.effects[n])] <- Re(eigen(subpop.mx)$values[1])
         rm(subpop.mx)
         
       } # End subpop loop

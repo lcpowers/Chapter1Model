@@ -45,20 +45,21 @@ asp.effects <- list(c(0),
                     c(-1,0,1),
                     c(-2,0,1),
                     seq(-2,1,by=1),
-                    seq(-2,2,1))
+                    seq(-2,2,by=1))
 
 reps <- 10
 clim.sds <- seq(0,25,by=1);clim.sds[clim.sds==0] <- 0.001
 asp.mags <- seq(0,20,by=1)
-rhos <- seq(0,0.1,0.025)
+rhos <- seq(0,0.5,0.25)
 move.rates <- seq(0,0.1,0.025)
 
 # # Things needed to run sim function line by line
-# clim.sd.i <- clim.sd <- 1
+# clim.sd.i <- clim.sd <- 10
 # asp.mag <- asp.mag.i <- 2
 # rep = 1
-# rho.i <- 0.25
+# rho.i <- 0.5
 # asp.eff.i = 2
+# move.rate.i = 0.1
 
 #### Run S1 #####
 cl = makeCluster(20)
@@ -90,38 +91,29 @@ S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","Env
                         clim.var = var(clim),
                         pop.var = var(pop.lam),
                         lt.pop.lam = geoMean(pop.lam)) %>% 
-              mutate(asp.effect = list(asp.effects.i),
+              mutate(asp.effect = paste(asp.effects.i,collapse = ","),
                      asp.mag = asp.mag.i,
                      clim.sd = clim.sd.i,
                      rho = rho.i,
-                     rep = rep) %>% 
-              merge(.,move.rate.i)
+                     rep = rep,
+                     move.rate = move.rate.i)
             return(tmp.df)
             # rm(df,tmp.df,clim.sd.i,asp.mag.i,move.rate.i)
         
       }
 stopCluster(cl)
+# S1_out_df <- rename(S1_out_df,move.rate=y)
 write_csv(S1_out_df,paste0("SimOutput/S1_",round(Sys.time()),".csv"))
 ```
 
 ```{r}
 
-test <- sample_n(S1_out_df,size = 10)
-
-S1_out_df$asp.effect2 <- NA
-
-for(i in 1:nrow(S1_out_df)){
-  
-  if(i%%10000==0){print(i)}
-  S1_out_df$asp.effect2[i] <- paste(unlist(S1_out_df$asp.effect[i]),collapse=",")
-  
-}
 
 for(i in 1:length(asp.effects)){
   
   ae.i <- paste(unlist(asp.effects[[i]]),collapse=",")
-  tmp <- filter(S1_out_df,asp.effect2 == ae.i)
-  write_csv(tmp,paste0("SimOutput/asp_effect_output/aspeff_",ae.i,"_2025-01-07.csv"))
+  tmp <- filter(S1_out_df,asp.effect == ae.i)
+  write_csv(tmp,paste0("SimOutput/asp_effect_output/aspeff_",ae.i,"_2025-01-13.csv"))
   
 }
 ```
@@ -418,63 +410,19 @@ ggplot(cor_df,aes(x=clim.sd,y=cor))+
 ## adding in climate autocorrelation
 ```{r}
 rm(list=ls())
-years <- 100
-clim.sd <- 10
-e_old <- rnorm(1,mean=0,sd=clim.sd)
-e_old.AR1 <- e_old.log <- rnorm(1,mean=0,sd=clim.sd)
-rho <- 0.75
+years <- 1000
+clim.sd <- 20
+rho <- 0.5
 beta <- sqrt(1-rho^2)
-
-a <- arima.sim(n=100, list(ar=c(0.5)))
-b <- arima.sim()
-plot(a)
-
-ar_sd1 <- arima.sim(n = 100, list(ar = 0.5), sd = 1)
-ar_sd10 <- arima.sim(n = 100, list(ar = 0.5), sd = 10)
+e_old <- rnorm(1,mean=0,sd=clim.sd)
 
 clims <- data.frame(year = 1:years,
-                    clim = NA,
-                    # clim.cor.AR1 = NA,
-                    # clim.cor.log = NA,
                     clim.cor = NA)
 
-x <- arima.sim(model = list(ar=0.1), n = 100)
-plot(x)
 
 for(i in 1:years){
   # 
   # # Generate new value based on previous value and random noise
-  # 
-  # # select and store raw climate variable
-  # z_t <- rnorm(1, mean = 0, sd = clim.sd)
-  # clims$clim[i] <- z_t
-  # 
-  # e_new <- rho * e_old.AR1 + z_t
-  # clims$clim.cor.AR1[i] <- e_new
-  # 
-  # e_old.AR1 <- e_new
-  # rm(e_new)
-  # 
-  # # scaling factor beta
-  # beta <- sqrt(1-rho^2)
-  # 
-  # # M&D equation 4.16 (pg. 139)
-  # e_new <- rho*e_old.log + log(clim.sd)*beta*z_t
-  # 
-  # # # Clip extreme values to maintain realistic climate range
-  # # e_new <- max(bounds[1], min(e_new, bounds[2]))
-  # # 
-  # # Store that
-  # clims$clim.cor.log[i] <- e_new
-  # 
-  # # # Make this years adjusted clim last years
-  # e_old.log <- e_new
-  # 
-  # # Remove this years
-  # rm(e_new)
-  
-  ### Trying doak way again
-  
   z_t <- rnorm(1)
   e_new <- rho*e_old + clim.sd*beta*z_t
   clims$clim.cor[i] <- e_new
@@ -483,10 +431,25 @@ for(i in 1:years){
 }
 
 ggplot(clims,aes(x=year))+
-  geom_point(aes(y=clim))+
-  geom_line(aes(y=clim))+
-   geom_point(aes(y=clim.cor))+
+  geom_point(aes(y=clim.cor))+
   geom_line(aes(y=clim.cor))
+
+sd(clims$clim.cor)
+
+####
+e_old.AR1 <- e_old.log <- rnorm(1,mean=0,sd=clim.sd)
+
+
+a <- arima.sim(n=100, list(ar=c(0.5)))
+b <- arima.sim()
+plot(a)
+
+ar_sd1 <- arima.sim(n = 100, list(ar = 0.5), sd = 1)
+ar_sd10 <- arima.sim(n = 100, list(ar = 0.5), sd = 10)
+x <- arima.sim(model = list(ar=0.1), n = 100)
+plot(x)
+
+
   
 
 ggplot(clims,aes(x = years))+
