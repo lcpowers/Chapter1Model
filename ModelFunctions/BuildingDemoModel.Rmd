@@ -96,13 +96,19 @@ rm(i)
 ### Find the climate SD that maximizes lambda for all microhabitat effect strengths
 ```{r maxLam_by_climSD}
 
-asp.effects <- c(-1,1)
-n.subpops <- length(asp.effects)
+asp.effects <- list(c(0),
+                    c(-1,1),
+                    c(-2,1),
+                    c(-1,0,1),
+                    c(-2,0,1),
+                    seq(-2,1,by=1),
+                    seq(-2,2,1))
+
+# n.subpops <- length(asp.effects)
 burn.in <- 50
 sim.years <- 500
 years <- burn.in + sim.years
-start.cells <- F.rows <- seq(1,n.subpops*3,by=3)
-seeds <- 200
+seeds <- 500
 
 # Loop over these
 reps <- 20
@@ -111,111 +117,116 @@ clim.sds <- seq(0,30,1)
 
 # Initiate cluster
 # stopCluster(cl)
-cores = detectCores()
 cl = makeCluster(20)
 registerDoParallel(cl = cl)
 
 maxLam_by_climsd_df <- 
-  foreach(r = 1:reps, .combine=rbind) %:%
-   foreach(asp.mag.i = asp.mags, .combine=rbind, .packages=c("tidyverse","EnvStats")) %:% 
-    foreach(clim.sd.i = clim.sds, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
+  foreach(asp.effects.ind = 1:length(asp.effects), .combine=rbind) %:%
+    foreach(r = 1:reps, .combine=rbind) %:%
+     foreach(asp.mag.i = asp.mags, .combine=rbind, .packages=c("tidyverse","EnvStats")) %:% 
+      foreach(clim.sd.i = clim.sds, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
       
-      annual.df <- data.frame(yr=1:years, lam=NA)
+        # Set parameters for this loop  
+        asp.effects.i <- asp.effects[[asp.effects.ind]]
+        n.subpops = length(asp.effects.i)
         
-      growth_params.i <- growth_params
-      surv_params.i <- surv_params
-      growth_params.i$asp.mag <- surv_params.i$asp.mag <- asp.mag.i
-          
-      # Set the starting population vectors
-      pop.size = 1000
-      pop.vec.t0 = rep(pop.size,3*n.subpops)
-      
-      for(yr in 1:years){
+        growth_params.i <- growth_params
+        surv_params.i <- surv_params
+        growth_params.i$asp.mag <- surv_params.i$asp.mag <- asp.mag.i
         
-        clim.yr <- rnorm(1,sd=clim.sd.i)
+        # Start cells for filling in the pop matrix
+        start.cells <- F.rows <- seq(1,n.subpops*3,by=3)
         
-        growth_params.i$clim <- surv_params.i$clim <- clim.yr
-        
-        # Initiate a full population MX for current year
-        pop.mx <- matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
-        
-        # Build the full population mx
-        for(n in 1:n.subpops){
-      
-          # Add subpop asp.effect to parameters
-          surv_params.i$asp.effect <- growth_params.i$asp.effect <- asp.effects[n]
-      
-          # Create sub-population matrix
-          subpop.mx = subpop_mx_fun(surv_params = surv_params.i,
-                                    growth_params = growth_params.i,
-                                    seeds.in = seeds)
-          
-          start.cell = start.cells[n]
-          pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
-          rm(subpop.mx)
-          
-          } # End subpop loop
-        
-        # Calc t1 population vector
-        pop.vec.t1 = pop.mx%*%pop.vec.t0
-        
-        lam <- sum(pop.vec.t1)/sum(pop.vec.t0)
-        annual.df$lam[yr] <- lam
-        
-        # Rescale the population vector. 
-        pop.vec.t1 = pop.vec.t1/sum(pop.vec.t1)*pop.size
-        
-      pop.vec.t0 = pop.vec.t1
-      rm(pop.vec.t1)
-      
-      } # End year loop
-      
-      annual.df <- filter(annual.df,yr>burn.in)
-      lt.lam <- geoMean(annual.df$lam)
+        # Set the starting population vectors
+        pop.size = 1000
+        pop.vec.t0 = rep(pop.size,3*n.subpops)
 
-      out_df <- data.frame(clim.sd = clim.sd.i,
-                           asp.mag = asp.mag.i,
-                           lt.lam = lt.lam,
-                           rep = r)
+        annual.df <- data.frame(yr=1:years, lam=NA)
+        
+        for(yr in 1:years){
 
-      return(out_df)
-      
+          clim.yr <- rnorm(1,sd=clim.sd.i)
+
+          growth_params.i$clim <- surv_params.i$clim <- clim.yr
+
+          # Initiate a full population MX for current year
+          pop.mx <- matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
+
+          # Build the full population mx
+          for(n in 1:n.subpops){
+
+            # Add subpop asp.effect to parameters
+            surv_params.i$asp.effect <- growth_params.i$asp.effect <- asp.effects.i[n]
+
+            # Create sub-population matrix
+            subpop.mx = subpop_mx_fun(surv_params = surv_params.i,
+                                      growth_params = growth_params.i,
+                                      seeds.in = seeds)
+
+            start.cell = start.cells[n]
+            pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
+            rm(subpop.mx)
+
+            } # End subpop loop
+
+          # Calc t1 population vector
+          pop.vec.t1 = pop.mx%*%pop.vec.t0
+
+          lam <- sum(pop.vec.t1)/sum(pop.vec.t0)
+          annual.df$lam[yr] <- lam
+
+          # Rescale the population vector.
+          pop.vec.t1 = pop.vec.t1/sum(pop.vec.t1)*pop.size
+
+        pop.vec.t0 = pop.vec.t1
+        rm(pop.vec.t1)
+
+        } # End year loop
+
+        annual.df <- filter(annual.df,yr>burn.in)
+        lt.lam <- geoMean(annual.df$lam)
+
+        out_df <- data.frame(asp.effects = as.character(paste(asp.effects.i,collapse = ",")),
+                             clim.sd = clim.sd.i,
+                             asp.mag = asp.mag.i,
+                             lt.lam = lt.lam,
+                             rep = r)
+
+        return(out_df)
+
   } # End parallel/outer loops
 stopCluster(cl)
-# write_csv(maxLam_by_climsd_df,paste0("seedSearchOutput/maxLam_",round(Sys.time()),".csv"))
-# maxLam_by_climsd_df <- read_csv("seedSearchOutput/maxLam_2024-11-12 17:54:54.csv")
-
-seed_climsd_df <- maxLam_by_climsd_df %>% 
-  group_by(asp.mag,clim.sd) %>% # For each clim.sd/asp.mag combination
-  summarise(mean.lt.lam = mean(lt.lam)) %>% # Find the mean lt lambda value
-  group_by(asp.mag) %>% # Then for each asp.mag
-  slice_max(order_by = mean.lt.lam,n = 1) %>% # find the clim.sd where the mean.lt.lam value is highest
-  mutate(seeds = NA) # %>% expand_grid(reps = 1:10,.)
+write_csv(maxLam_by_climsd_df,paste0("seedSearchOutput/maxLam_",round(Sys.time()),".csv"))
 
 ```
 
 ### For each microhabitat effect, find the seed number that corresponds to LT lambda being ~1 in peak conditions (peak climate SD)
 ```{r seeds_search}
-asp.effects <- c(-1,1)
-n.subpops <- length(asp.effects)
+
+asp.effects <- list(c(0),
+                    c(-1,1),
+                    c(-2,1),
+                    c(-1,0,1),
+                    c(-2,0,1),
+                    seq(-2,1,by=1),
+                    seq(-2,2,1))
+
 burn.in <- 50
 sim.years <- 500
 years <- burn.in + sim.years
-start.cells <- F.rows <- seq(1,n.subpops*3,by=3)
 
-seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2024-11-12 17:54:54.csv") %>% 
-  rbind(.,read_csv("seedSearchOutput/maxLam_2024-12-05 08:53:32.csv")) %>% 
-  group_by(asp.mag,clim.sd) %>% # For each clim.sd/asp.mag combination
+seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2024-12-21 14:40:13.csv") %>% 
+  group_by(asp.mag,asp.effects,clim.sd) %>% # For each clim.sd/asp.mag combination
   summarise(mean.lt.lam = mean(lt.lam),
          max.lt.lam = max(lt.lam)) %>% # Find the mean lt lambda value
-  group_by(asp.mag) %>% # Then for each asp.mag
+  group_by(asp.mag,asp.effects) %>% # Then for each asp.mag
   slice_max(order_by = mean.lt.lam,n = 1) %>% # find the clim.sd where the mean.lt.lam value is highest
   mutate(seeds = NA)
 
 x.target <- (0.001)^2
 reps <- 50
 
-move.mx <- moveMx_fun(n.subpops = n.subpops, data.frame(AtoB = 0.01, BtoA = 0.01))
+move.rate = 0.05
 
 # Initiate cluster
 # stopCluster(cl)
@@ -225,11 +236,15 @@ registerDoParallel(cl = cl)
 seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
   for(i in 1:nrow(seed_climsd_df)){
     
-    timeStart <- round(Sys.time(),units='mins')
-        
+    asp.effects.i <- strsplit(seed_climsd_df$asp.effects[i],",") %>% unlist()
+    n.subpops.i <- length(asp.effects.i)
+    start.cells <- F.rows <- seq(1,n.subpops.i*3,by=3)
+    
     growth_params.i <- growth_params
     surv_params.i <- surv_params
     growth_params.i$asp.mag <- surv_params.i$asp.mag <- seed_climsd_df$asp.mag[i]
+    
+    move.mx <- moveMx_fun(n.subpops = n.subpops.i, move.rates = move.rate)
     
     lt.lam <- 0.9
     lo.seeds <- 0;hi.seeds <- 10^8
@@ -247,7 +262,7 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
           
       # Set the starting population vectors
       pop.size = 1000
-      pop.vec.t0 = rep(pop.size,3*n.subpops)
+      pop.vec.t0 = rep(pop.size,3*n.subpops.i)
       
       for(yr in 1:years){
         
@@ -256,13 +271,13 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
           growth_params.i$clim <- surv_params.i$clim <- clim.yr
           
           # Initiate a full population MX for current year
-          pop.mx <- matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
+          pop.mx <- matrix(data=0,nrow=n.subpops.i*3,ncol=n.subpops.i*3)
           
         # Build the full population mx
-        for(n in 1:n.subpops){
+        for(n in 1:n.subpops.i){
       
           # Add subpop asp.effect to parameters
-          surv_params.i$asp.effect <- growth_params.i$asp.effect <- asp.effects[n]
+          surv_params.i$asp.effect <- growth_params.i$asp.effect <- as.numeric(asp.effects.i[n])
       
           # Create sub-population matrix
           subpop.mx = subpop_mx_fun(surv_params = surv_params.i,
@@ -317,7 +332,7 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
   }
   return(seed_climsd_df)
 }
-stopCluster(cl)
+stopCluster(cl) 
 write_csv(seed_search,paste0("seedSearchOutput/seedSearch_",Sys.time(),".csv"))
 
 ```
