@@ -96,13 +96,18 @@ rm(i)
 ### Find the climate SD that maximizes lambda for all microhabitat effect strengths
 ```{r maxLam_by_climSD}
 
-asp.effects <- list(c(0),
-                    c(-1,1),
-                    c(-2,1),
-                    c(-1,0,1),
-                    c(-2,0,1),
-                    seq(-2,1,by=1),
-                    seq(-2,2,1))
+asp.effects <- 
+  list(
+    # Symmetrical
+    c(-1,1),
+    c(-2,-1,1,2),
+    seq(-5,5,by=2),
+    
+    # Asymmetrical
+    c(-2,1),
+    c(-2,-1,1),
+    c(seq(-5,-1,1),1)
+)
 
 # n.subpops <- length(asp.effects)
 burn.in <- 50
@@ -203,19 +208,24 @@ write_csv(maxLam_by_climsd_df,paste0("seedSearchOutput/maxLam_",round(Sys.time()
 ### For each microhabitat effect, find the seed number that corresponds to LT lambda being ~1 in peak conditions (peak climate SD)
 ```{r seeds_search}
 
-asp.effects <- list(c(0),
-                    c(-1,1),
-                    c(-2,1),
-                    c(-1,0,1),
-                    c(-2,0,1),
-                    seq(-2,1,by=1),
-                    seq(-2,2,1))
+asp.effects <- 
+  list(
+    # Symmetrical
+    c(-1,1),
+    c(-2,-1,1,2),
+    seq(-5,5,by=2),
+    
+    # Asymmetrical
+    c(-2,1),
+    c(-2,-1,1),
+    c(seq(-5,-1,1),1)
+)
 
 burn.in <- 50
 sim.years <- 500
 years <- burn.in + sim.years
 
-seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2024-12-21 14:40:13.csv") %>% 
+seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2025-01-27 23:14:17.csv") %>% 
   group_by(asp.mag,asp.effects,clim.sd) %>% # For each clim.sd/asp.mag combination
   summarise(mean.lt.lam = mean(lt.lam),
          max.lt.lam = max(lt.lam)) %>% # Find the mean lt lambda value
@@ -244,7 +254,7 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
     surv_params.i <- surv_params
     growth_params.i$asp.mag <- surv_params.i$asp.mag <- seed_climsd_df$asp.mag[i]
     
-    move.mx <- moveMx_fun(n.subpops = n.subpops.i, move.rates = move.rate)
+    move.mx <- moveMx_fun(n.subpops = n.subpops.i, move.rate = move.rate)
     
     lt.lam <- 0.9
     lo.seeds <- 0;hi.seeds <- 10^8
