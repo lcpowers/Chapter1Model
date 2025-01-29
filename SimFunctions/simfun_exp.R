@@ -13,7 +13,7 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
                            rho = rho,
                            clim = NA,
                            pop.lam = NA)
-    output_df[paste0("s_",asp.effects.i)] <- NA
+    output_df[paste0("s_",asp.effects)] <- NA
     
     # Define model params
     surv_params.n = surv_params
@@ -47,7 +47,10 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
       pop.mx = matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
       
       # Build the full population mx
+      subpop.array <- array(data = NA,dim = c(3,3,n.subpops))
+    
       for(n in 1:n.subpops){
+        
         
         # Add subpop asp.effect to parameters
         surv_params.n$asp.effect = growth_params.n$asp.effect = asp.effects[n]
@@ -61,9 +64,26 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
         start.cell = start.cells[n]
         pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
         output_df[yr,paste0("s_",asp.effects[n])] <- Re(eigen(subpop.mx)$values[1])
+        
+        subpop.mx
+        # subpop.array[,,n] <- subpop.mx
+        
         rm(subpop.mx)
         
       } # End subpop loop
+      
+      for(c in 1:3){
+        
+        props <- pop.vec.t0[start.cells+c-1]/sum(pop.vec.t0[start.cells])
+        subpop.array.i <- subpop.array[,c,]
+  
+        
+      }
+      
+      
+      # mean.mx <- apply(X = subpop.array, 1:2, mean)
+      mean.mx <- matrix(data = 0, nrow = 3, ncol = 3)
+      mean.mx[1,3] <- 
       
       # Multiply movement and pop matrices
       m.pop.mx = move.mx%*%pop.mx
