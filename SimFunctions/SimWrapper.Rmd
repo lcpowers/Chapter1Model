@@ -25,29 +25,33 @@ source("SimFunctions/moveMx_fun.R")
 source("SimFunctions/simfun_exp.R")
 source("ModelFunctions/ParamVals.R")
 source("ModelFunctions/subpop_mx_fun.R")
-seeds_df <- read_csv("seedSearchOutput/seedSearch_2024-12-22 05:52:10.326616.csv") %>% 
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 00:05:00.499335.csv") %>% 
   mutate(seeds2 = floor(seeds)) %>% 
   group_by(asp.effects,asp.mag,clim.sd) %>% 
   summarize(avg.seeds = round(mean(seeds)))
 
 ```
 
-## Scenario 1: Exponential growth, symmetrical movement, symmetrical aspect effects
+## Run simulations for all aspect effect combinations
 ```{r Scen1}
 
 # Sim. function inputs
 burn.in.yrs <- 100
 sim.yrs <- 500
 
-asp.effects <- list(c(0),
-                    c(-1,1),
-                    c(-2,1),
-                    c(-1,0,1),
-                    c(-2,0,1),
-                    seq(-2,1,by=1),
-                    seq(-2,2,by=1))
-
-reps <- 10
+asp.effects <- 
+  list(
+    # Symmetrical
+    c(-1,1),
+    c(-2,-1,1,2),
+    seq(-5,5,by=2),
+    
+    # Asymmetrical
+    c(-2,1),
+    c(-2,-1,1),
+    c(seq(-5,-1,1),1)
+)
+reps <- 5
 clim.sds <- seq(0,25,by=1);clim.sds[clim.sds==0] <- 0.001
 asp.mags <- seq(0,20,by=1)
 rhos <- seq(0,0.5,0.25)
@@ -83,7 +87,7 @@ S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","Env
             seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i & seeds_df$asp.effects == paste(asp.effects.i,collapse = ",")]
           
             df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops.i, asp.effects = asp.effects.i,
-                                clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i)
+                                clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i,clim.dist = "runif")
             
             tmp.df = df %>%
               filter(year>burn.in.yrs) %>% # Filter out burn-in years. This could also happen within the function.
@@ -113,7 +117,7 @@ for(i in 1:length(asp.effects)){
   
   ae.i <- paste(unlist(asp.effects[[i]]),collapse=",")
   tmp <- filter(S1_out_df,asp.effect == ae.i)
-  write_csv(tmp,paste0("SimOutput/asp_effect_output/aspeff_",ae.i,"_2025-01-13.csv"))
+  write_csv(tmp,paste0("SimOutput/asp_effect_output/aspeff_",ae.i,"_2025-01-14__2.csv"))
   
 }
 ```
@@ -196,25 +200,38 @@ n.subpops.i <- length(asp.effects.i)
 move.rate.i <- 0.05
 asp.mag.i <- 10
 clim.sd.i <- 10
-rho.i = 0.25
+rho.i = 0
 
 ##### Create a movement matrix from the move.rates row
 move.mx.i <- moveMx_fun(n.subpops.i,move.rate.i)
 
 seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i & seeds_df$asp.effects == paste(asp.effects.i,collapse = ",")]
 
-df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops.i, asp.effects = asp.effects.i,
+df.rnorm = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops.i, asp.effects = asp.effects.i,
                     clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i)
 
-df = filter(df,year>burn.in.yrs)
-ggplot(df,aes(x=clim))+
+df.rnorm = filter(df.rnorm,year>burn.in.yrs)
+ggplot(df.rnorm,aes(x=clim))+
   geom_line(aes(y=`s_-1`,color="s-1"))+
   geom_line(aes(y=`s_0`,color="s0"))+
   geom_line(aes(y=`s_1`,color="s1"))+
   geom_point(aes(y=pop.lam,color="pop"))+
   theme_classic()
 
-plot(df$year,df$clim)
+
+df.unif = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops.i, asp.effects = asp.effects.i,
+                    clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i,clim.dist = "runif")
+
+df.unif = filter(df.unif,year>burn.in.yrs)
+
+ggplot(df.unif,aes(x=clim))+
+  geom_line(aes(y=`s_-1`,color="s-1"))+
+  geom_line(aes(y=`s_0`,color="s0"))+
+  geom_line(aes(y=`s_1`,color="s1"))+
+  geom_point(aes(y=pop.lam,color="pop"))+
+  theme_classic()+
+  scale_color_manual(values=c("lightblue","black","salmon","goldenrod"))
+
 ```
 
 
