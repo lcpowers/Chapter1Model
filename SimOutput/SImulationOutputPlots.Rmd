@@ -65,8 +65,13 @@ contour_colors <- function(df,binwidth,var){
 ### Data ####
 ```{r}
 # All responses reflect mean climate (a.e. = -1,1)
-all_output <- read_csv("SimOutput/S1_2025-01-30 14:58:47.csv")
-asp.effects <- unique(all_output$asp.effect) 
+all_output <- read_csv("SimOutput/S1_2025-01-30 14:58:47.csv",
+                        asp.effect = col_factor())
+unique(all_output$asp.effect) 
+
+all_output2 <- read_csv("SimOutput/S1_2025-01-31 10:56:51.csv")
+unique(all_output2$asp.effect)
+
 s1 <- filter(all_output,asp.effect==c(-11))%>% 
   group_by(clim.sd, asp.mag, move.rate, rho, asp.effect) %>%
   summarize(agg.pop.var = mean(pop.var),
