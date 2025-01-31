@@ -25,11 +25,10 @@ source("SimFunctions/moveMx_fun.R")
 source("SimFunctions/simfun_exp.R")
 source("ModelFunctions/ParamVals.R")
 source("ModelFunctions/subpop_mx_fun.R")
-seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 00:05:00.499335.csv") %>% 
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 21:30:11.114866.csv") %>% 
   mutate(seeds2 = floor(seeds)) %>% 
   group_by(asp.effects,asp.mag,clim.sd) %>% 
   summarize(avg.seeds = round(mean(seeds)))
-
 ```
 
 ## Run simulations for all aspect effect combinations
@@ -38,24 +37,24 @@ seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 00:05:00.499335.csv
 # Sim. function inputs
 burn.in.yrs <- 100
 sim.yrs <- 500
-
-asp.effects <- 
-  list(
-    # Symmetrical
-    c(-1,1),
-    c(-2,-1,1,2),
-    seq(-5,5,by=2),
-    
-    # Asymmetrical
-    c(-2,1),
-    c(-2,-1,1),
-    c(seq(-5,-1,1),1)
-)
 reps <- 5
 clim.sds <- seq(0,25,by=1);clim.sds[clim.sds==0] <- 0.001
 asp.mags <- seq(0,20,by=1)
 rhos <- seq(0,0.5,0.25)
-move.rates <- seq(0,0.1,0.025)
+move.rates <- seq(0,0.2,0.05)
+
+asp.effects <- 
+  list(
+    # Symmetrical
+    c(-1, 1), # Simple
+    # c(-1.1,-1, 1,1.1), # More pops
+    # c(-1.5,-1, 1,1.5), # More pops more dramatic
+    
+    # Asymmetrical
+    # c(-1,-1,1),
+    c(-1.1,1)# , 
+    # c(-1.2,-1.1,-1,1)
+)
 
 # # Things needed to run sim function line by line
 # clim.sd.i <- clim.sd <- 10
@@ -66,7 +65,7 @@ move.rates <- seq(0,0.1,0.025)
 # move.rate.i = 0.1
 
 #### Run S1 #####
-cl = makeCluster(20)
+cl = makeCluster(spec = 25)
 registerDoParallel(cl = cl)
 
 S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
@@ -87,7 +86,7 @@ S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","Env
             seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i & seeds_df$asp.effects == paste(asp.effects.i,collapse = ",")]
           
             df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops.i, asp.effects = asp.effects.i,
-                                clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i,clim.dist = "runif")
+                                clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i)
             
             tmp.df = df %>%
               filter(year>burn.in.yrs) %>% # Filter out burn-in years. This could also happen within the function.
