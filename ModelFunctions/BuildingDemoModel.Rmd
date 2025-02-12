@@ -96,17 +96,24 @@ rm(i)
 ### Find the climate SD that maximizes lambda for all microhabitat effect strengths
 ```{r maxLam_by_climSD}
 
-asp.effects <- 
+# asp.effects <- 
+#   list(
+#     # Symmetrical
+#     c(-1, 1), # Simple
+#     c(-1.1,-1, 1,1.1), # More pops
+#     c(-1.5,-1, 1,1.5), # More pops more dramatic
+#     
+#     # Asymmetrical
+#     c(-1,-1,1),
+#     c(-1.1,1), 
+#     c(-1.2,-1.1,-1,1)
+# )
+
+asp.effects <-
   list(
-    # Symmetrical
-    c(-1, 1), # Simple
-    c(-1.1,-1, 1,1.1), # More pops
-    c(-1.5,-1, 1,1.5), # More pops more dramatic
-    
-    # Asymmetrical
-    c(-1,-1,1),
-    c(-1.1,1), 
-    c(-1.2,-1.1,-1,1)
+    c(-2, 1), # Simple
+    c(-2,-1, 1), # More pops
+    c(-2,-1, 1,2) # More pops more dramatic
 )
 
 # n.subpops <- length(asp.effects)
@@ -208,24 +215,31 @@ write_csv(maxLam_by_climsd_df,paste0("seedSearchOutput/maxLam_",round(Sys.time()
 ### For each microhabitat effect, find the seed number that corresponds to LT lambda being ~1 in peak conditions (peak climate SD)
 ```{r seeds_search}
 
-asp.effects <- 
+# asp.effects <- 
+#   list(
+#     # Symmetrical
+#     c(-1, 1), # Simple
+#     c(-1.1,-1, 1,1.1), # More pops
+#     c(-1.5,-1, 1,1.5), # More pops more dramatic
+#     
+#     # Asymmetrical
+#     c(-1,-1,1),
+#     c(-1.1,1), 
+#     c(-1.2,-1.1,-1,1)
+# )
+
+asp.effects <-
   list(
-    # Symmetrical
-    c(-1, 1), # Simple
-    c(-1.1,-1, 1,1.1), # More pops
-    c(-1.5,-1, 1,1.5), # More pops more dramatic
-    
-    # Asymmetrical
-    c(-1,-1,1),
-    c(-1.1,1), 
-    c(-1.2,-1.1,-1,1)
+    c(-2, 1), 
+    c(-2,-1, 1), 
+    c(-2,-1, 1,2) 
 )
 
 burn.in <- 50
-sim.years <- 300
+sim.years <- 250
 years <- burn.in + sim.years
 
-seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2025-01-29 17:10:05.csv") %>% 
+seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2025-02-11 13:20:30.csv") %>% 
   group_by(asp.mag,asp.effects,clim.sd) %>% # For each clim.sd/asp.mag combination
   summarise(mean.lt.lam = mean(lt.lam),
          max.lt.lam = max(lt.lam)) %>% # Find the mean lt lambda value

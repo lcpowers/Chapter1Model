@@ -1,4 +1,4 @@
-simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, asp.effects,seeds,rho){
+simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, asp.effects, seeds, rho){
     
     # total number of years to run the loop
     years = burn.in.yrs + sim.yrs
@@ -58,33 +58,17 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
         # Create sub-population matrix
         subpop.mx = subpop_mx_fun(surv_params = surv_params.n,
                                   growth_params = growth_params.n,
-                                  seeds = seeds)
+                                  seeds.in = seeds)
         
         # Re(eigen(subpop.mx)$values[1])
         start.cell = start.cells[n]
         pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
         output_df[yr,paste0("s_",asp.effects[n])] <- Re(eigen(subpop.mx)$values[1])
         
-        subpop.mx
-        # subpop.array[,,n] <- subpop.mx
-        
         rm(subpop.mx)
         
       } # End subpop loop
-      
-      for(c in 1:3){
-        
-        props <- pop.vec.t0[start.cells+c-1]/sum(pop.vec.t0[start.cells])
-        subpop.array.i <- subpop.array[,c,]
-  
-        
-      }
-      
-      
-      # mean.mx <- apply(X = subpop.array, 1:2, mean)
-      mean.mx <- matrix(data = 0, nrow = 3, ncol = 3)
-      mean.mx[1,3] <- 
-      
+
       # Multiply movement and pop matrices
       m.pop.mx = move.mx%*%pop.mx
       
