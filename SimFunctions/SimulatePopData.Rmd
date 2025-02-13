@@ -1,0 +1,197 @@
+---
+title: "Simulate population data"
+author: "Claire Powers"
+date: "2025-02-03"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r}
+rm(list=ls())
+library(tidyverse)
+library(EnvStats)
+library(parallel)
+library(doParallel)
+library(foreach)
+
+
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 21:30:11.114866.csv")
+
+source("ModelFunctions/ParamVals.R")
+source("SimFunctions/simData_fun.R")
+source("SimFunctions/clim_vals_fun.R")
+source("ModelFunctions/survival_fun.R")
+source("ModelFunctions/growth_fun.R")
+source("ModelFunctions/logit2prob.R")
+source("ModelFunctions/subpop_mx_fun.R")
+
+
+# Constants
+timesteps <- 50
+start_pop <- c(840,20,50)
+
+# Things to eventually loop over
+clim.sd <- 0.001
+rho <- 0
+asp.mag <- 0
+asp.effects <- c(-1,1)
+move.rate <- 0.05
+
+# Within a loop later
+clim_vals <- clim_vals_fun(clim.sd = clim.sd, rho=rho, timesteps = timesteps)
+seed_vec <- seeds_df$seeds[seeds_df$asp.mag==asp.mag & seeds_df$asp.effects==paste(asp.effects,collapse = ",")]
+seeds <- mean(seed_vec)
+
+df <- simulate_pop_data(surv_params = surv_params,
+                        growth_params = growth_params,
+                        seeds = seeds,
+                        start_pop = start_pop,
+                        timesteps = 20,
+                        clim_vals = clim_vals,
+                        asp.effects = c(-1,1),
+                        asp.mag = asp.mag)
+
+```
+
+
+### making a for-loop out of the code above
+```{r}
+
+reps <- 2
+clim.sds <- seq(0,15,5);clim.sds[clim.sds==0]=0.01
+asp.mags <- seq(0,15,5)
+rhos <- seq(0,0.5,0.2)
+move.rates <- seq(0,0.2,0.1)
+asp.effects <- list(c(-1,1))
+start_pop <- c(840,20,50)
+timesteps <- 20
+
+cl = makeCluster(spec = 2)
+registerDoParallel(cl = cl)
+
+sim_data_out <- foreach(rep.i = 1:reps, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
+  foreach(asp.eff.i = 1:length(asp.effects), .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
+    foreach(move.rate.i = move.rates, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
+      foreach(clim.sd.i = clim.sds, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
+        foreach(asp.mag.i = asp.mags, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
+          foreach(rho.i = rhos,.combine = rbind,.packages=c("tidyverse","EnvStats")) %dopar% {
+            
+            asp.effects.i <- asp.effects[asp.eff.i] %>% unlist()
+            
+            clim_vals <- clim_vals_fun(clim.sd = clim.sd.i, rho=rho.i, timesteps = timesteps)
+            seeds.i = mean(seeds_df$seeds[seeds_df$asp.mag==asp.mag.i & seeds_df$asp.effects == paste(asp.effects.i,collapse = ",")])
+            
+            df <- simulate_pop_data(surv_params = surv_params,
+                        growth_params = growth_params,
+                        seeds = seeds.i,
+                        start_pop = start_pop,
+                        timesteps = timesteps,
+                        clim_vals = clim_vals,
+                        asp.effects = asp.effects.i,
+                        asp.mag = asp.mag.i) %>% 
+              mutate(rep = rep.i,
+                     asp.mag = asp.mag.i,
+                     rho = rho.i,
+                     clim.sd = clim.sd.i,
+                     asp.effects.grp =asp.effects[asp.eff.i] )
+            
+            write_csv(df, paste0("SimOutput/simData/V2_",round(Sys.time()),".csv"))
+            # write_csv(df,paste0("SimOutput/simData/clim",clim.sd.i,"_aspmag",asp.mag.i,"_aspeffs",paste(asp.effects.i,collapse = "."),"_rho",rho.i,"_r",rep.i,".csv"))
+            return(df)
+            
+          }
+stopCluster(cl)
+```
+
+```{r}
+
+sim_data_fns <- list.files("SimOutput/simData/",full.names = T)
+sim_data <- vroom::vroom(sim_data_fns) %>% 
+  filter(timestep>0) %>% 
+  filter(is.na(asp.mag))
+```
+
+
+### Looking at output to check it
+```{r}
+tallies <- df %>% 
+  group_by(individual_id) %>% tally()
+
+stage.nums <- df %>% 
+  group_by(timestep,stage) %>% 
+  summarise(size = sum(survival_status))
+
+ggplot(stage.nums,aes(x=timestep,y=size,color=stage))+
+  geom_point()
+
+table(df$stage,df$timestep)
+
+pop.size <- df %>% 
+  group_by(timestep) %>% 
+  summarise(size=sum(survival_status)) %>% 
+  mutate(ann.lam = size/lag(size)) %>% 
+  mutate(geo.mean = geoMean(ann.lam,na.rm=T))
+
+ggplot(pop.size,aes(x=timestep,y=size))+
+  geom_point()
+
+ggplot(pop.size,aes(x=timestep,y=ann.lam))+
+  geom_point()+
+  geom_hline(yintercept = pop.size$geo.mean)
+
+```
+
+- Take the actual values that you have and say what are the mean and the variance of lambda for that model with two populations
+- Key question: If you ignore subpopulations and you estimate the mean, variance, and covariance 
+- Run the stochastic model: whats the dependency of each vital rate on climate. What's the unexplained variance for surv, g, repro,
+- What is it's prediction about stochastic growth rate or extinction rate, etc. 
+
+1. In each year, what is the estimated growth and surv or juvs
+2. What's the mean and temporal vital rate and covariation
+3. Function of year and aspect effect 
+4. Assume you know the movement rate
+
+50 adults and start at stable stage structure for the average climate
+20 years 
+
+## Getting SSD
+```{r}
+seeds
+mean.mx <- subpop_mx_fun(surv_params = surv_params,growth_params = growth_params,seeds.in = 21)
+mean.mx
+
+Re(eigen(mean.mx)$values[1])
+
+ssd <- eigen(mean.mx)$vectors[,1]/sum(eigen(mean.mx)$vectors[,1])
+ssd.multiplier <- 50/ssd[3]
+
+ssd.nums <- round(ssd*ssd.multiplier)
+
+size_mx <- matrix(ncol=3,nrow=timesteps+1)
+size_mx[1,] <- ssd.nums
+
+for(i in 1:timesteps){
+  
+  growth_params$clim <- surv_params$clim <- rnorm(1)
+  mean.mx <- subpop_mx_fun(surv_params = surv_params,growth_params = growth_params,seeds.in = 21)
+  size_mx[i+1,] <- mean.mx%*%as.numeric(size_mx[i,])
+  
+}
+
+size_df <- as.data.frame(size_mx) %>% 
+  mutate(timesteps = 1:(timesteps+1),
+         total = V1+V2+V3)
+
+ggplot(size_df,aes(x=timesteps,y=total))+
+  geom_point()
+```
+
+
+
+
+
+
