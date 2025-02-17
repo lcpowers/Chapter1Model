@@ -1,7 +1,9 @@
-simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, asp.effects, seeds, rho){
+simfun_exponential = function(burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, asp.effects, seeds, rho){
     
     # total number of years to run the loop
     years = burn.in.yrs + sim.yrs
+    
+    n.subpops = length(asp.effects)
     
     # Full pop mx start cell positions
     start.cells = seq(1,n.subpops*3,by=3)
@@ -14,6 +16,7 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
                            clim = NA,
                            pop.lam = NA)
     output_df[paste0("s_",asp.effects)] <- NA
+    output_df[paste0("size_",asp.effects)] <- NA
     
     # Define model params
     surv_params.n = surv_params
@@ -23,14 +26,15 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
     surv_params.n$asp.mag = growth_params.n$asp.mag = asp.mag
     
     # Set the starting population vectors
-    pop.size = 1000
-    pop.vec.t0 = rep(pop.size,3*n.subpops)
+    start.size = 1000
+    pop.vec.t0 = rep(start.size/(3*n.subpops),3*n.subpops)
 
     e_old <- rnorm(1, mean=0, sd=clim.sd)
     beta <- sqrt(1-rho^2) # rho is a function parameter
     
+    # years = 10
     for(yr in 1:years){
-
+      
       # Generate new value based on previous value and random noise
       z_t <- rnorm(1)
 
@@ -45,12 +49,8 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
       
       # Initiate a full population MX for current year
       pop.mx = matrix(data=0,nrow=n.subpops*3,ncol=n.subpops*3)
-      
-      # Build the full population mx
-      subpop.array <- array(data = NA,dim = c(3,3,n.subpops))
     
       for(n in 1:n.subpops){
-        
         
         # Add subpop asp.effect to parameters
         surv_params.n$asp.effect = growth_params.n$asp.effect = asp.effects[n]
@@ -60,10 +60,9 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
                                   growth_params = growth_params.n,
                                   seeds.in = seeds)
         
-        # Re(eigen(subpop.mx)$values[1])
+        # Add to main matrix
         start.cell = start.cells[n]
         pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
-        output_df[yr,paste0("s_",asp.effects[n])] <- Re(eigen(subpop.mx)$values[1])
         
         rm(subpop.mx)
         
@@ -79,8 +78,30 @@ simfun_exponential = function(n.subpops, burn.in.yrs, sim.yrs, clim.sd, move.mx,
       ann.lam = sum(pop.vec.t1)/sum(pop.vec.t0)
       output_df$pop.lam[yr]=ann.lam
       
-      # Rescale the population vector. 
-      pop.vec.t1 = pop.vec.t1/sum(pop.vec.t1)*pop.size
+      # Now do that for subpops
+      for(n in 1:n.subpops){
+        
+        start.cell = start.cells[n]
+        
+        t1sum <- sum(pop.vec.t1[start.cell:(2+start.cell)])
+        t0sum <- sum(pop.vec.t0[start.cell:(2+start.cell)])
+        
+        if(t1sum==0){
+          
+          subpop.lam <- 0
+          
+        } else{
+          subpop.lam <- t1sum/t0sum
+          
+        }
+        
+        output_df[yr,paste0("s_",asp.effects[n])] <- subpop.lam
+        output_df[yr,paste0("size_",asp.effects[n])] <- t1sum
+        
+      }
+      
+      # Rescale the population vector
+      pop.vec.t1 = pop.vec.t1/sum(pop.vec.t1)*start.size
       
       pop.vec.t0 = pop.vec.t1
       rm(pop.vec.t1)
