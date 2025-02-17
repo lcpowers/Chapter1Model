@@ -28,9 +28,15 @@ source("ModelFunctions/subpop_mx_fun.R")
 seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 21:30:11.114866.csv") %>% 
   rbind(.,read_csv("seedSearchOutput/seedSearch_2025-02-07 14:15:25.516399.csv")) %>% 
   rbind(.,read_csv("seedSearchOutput/seedSearch_2025-02-11 21:16:56.112911.csv")) %>% 
+  rbind(.,read_csv("seedSearchOutput/seedSearch_2025-02-17 10:07:58.468259.csv",
+                   col_types = c(asp.effects=col_character()))) %>% 
   mutate(seeds2 = floor(seeds)) %>% 
   group_by(asp.effects,asp.mag,clim.sd) %>% 
   summarize(avg.seeds = round(mean(seeds)))
+summary(seeds_df)
+
+seeds_df$asp.effects[seeds_df$asp.effects=="-1.51"] = "-1.5,1"
+
 ```
 
 ## Run simulations for all aspect effect combinations
@@ -57,20 +63,24 @@ move.rates <- seq(0,0.2,0.05)
 #     c(-1.1,1) , 
 #     c(-1.2,-1.1,-1,1)
 # )
-
+# 
+# asp.effects <-
+#   list(
+#     c(-2, 1), 
+#     c(-2,-1, 1), 
+#     c(-2,-1, 1,2) 
+# )
 asp.effects <-
   list(
-    c(-2, 1), 
-    c(-2,-1, 1), 
-    c(-2,-1, 1,2) 
+    c(-1.5, 1) # Simple
 )
 
-# # Things needed to run sim function line by line
+# Things needed to run sim function line by line
 # clim.sd.i <- clim.sd <- 10
 # asp.mag <- asp.mag.i <- 2
 # rep = 1
 # rho.i <- 0.5
-# asp.eff.i = 2
+# asp.eff.i = 1
 # move.rate.i = 0.1
 
 #### Run S1 #####
@@ -93,7 +103,8 @@ S1_out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","Env
             move.mx.i <- moveMx_fun(n.subpops.i,move.rate.i)
           
             seeds.i = seeds_df$avg.seeds[seeds_df$asp.mag==asp.mag.i & seeds_df$asp.effects == paste(asp.effects.i,collapse = ",")]
-          
+            
+            
             df = simfun_exponential(burn.in.yrs=burn.in.yrs, sim.yrs=sim.yrs, n.subpops=n.subpops.i, asp.effects = asp.effects.i,
                                 clim.sd=clim.sd.i, asp.mag=asp.mag.i, move.mx = move.mx.i,seeds = seeds.i,rho = rho.i)
             
