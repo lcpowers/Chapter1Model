@@ -108,13 +108,20 @@ rm(i)
 #     c(-1.1,1), 
 #     c(-1.2,-1.1,-1,1)
 # )
+# 
+# asp.effects <-
+#   list(
+#     c(-2, 1), # Simple
+#     c(-2,-1, 1), # More pops
+#     c(-2,-1, 1,2) # More pops more dramatic
+# )
 
 asp.effects <-
   list(
-    c(-2, 1), # Simple
-    c(-2,-1, 1), # More pops
-    c(-2,-1, 1,2) # More pops more dramatic
+    c(-1.5, 1), # Simple
 )
+
+
 
 # n.subpops <- length(asp.effects)
 burn.in <- 50
