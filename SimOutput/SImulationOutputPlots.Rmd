@@ -16,8 +16,13 @@ library(pals)
 library(randomcoloR)
 library(scico)
 library(RColorBrewer)
+library(EnvStats)
 
 rm(list=ls())
+source("SimFunctions/moveMx_fun.R")
+source("SimFunctions/simfun_exp.R")
+source("ModelFunctions/ParamVals.R")
+source("ModelFunctions/subpop_mx_fun.R")
 
 plot_theme <- function() {
   theme(
@@ -64,43 +69,450 @@ contour_colors <- function(df,binwidth,var){
 
 ### Data ####
 ```{r}
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 21:30:11.114866.csv") %>% 
+  rbind(.,read_csv("seedSearchOutput/seedSearch_2025-02-07 14:15:25.516399.csv")) %>% 
+  rbind(.,read_csv("seedSearchOutput/seedSearch_2025-02-11 21:16:56.112911.csv")) %>% 
+  rbind(.,read_csv("seedSearchOutput/seedSearch_2025-02-17 10:07:58.468259.csv",
+                   col_types = c(asp.effects=col_character()))) %>% 
+  mutate(seeds2 = floor(seeds)) %>% 
+  group_by(asp.effects,asp.mag,clim.sd) %>% 
+  summarize(avg.seeds = round(mean(seeds)))
+
+seeds_df$asp.effects[seeds_df$asp.effects=="-1.51"] = "-1.5,1"
+
 # All responses reflect mean climate (a.e. = -1,1)
-all_output <- read_csv("SimOutput/S1_2025-01-30 14:58:47.csv",
-                        asp.effect = col_factor())
-unique(all_output$asp.effect) 
+# all_output <- read_csv("SimOutput/S1_2025-01-31 10:58:00.csv") %>% 
+#   select(-asp.effect2) %>% 
+#   rbind(.,read_csv("SimOutput/S1_2025-02-04 15:54:27.csv")) %>% 
+#   rbind(.,read_csv("SimOutput/S1_2025-02-07 08_04_21.csv")) %>% 
+#   rbind(.,read_csv("SimOutput/S1_2025-02-13 07_56_36.csv"))
 
-all_output2 <- read_csv("SimOutput/S1_2025-01-31 10:56:51.csv")
-unique(all_output2$asp.effect)
+asp.effects <- unique(all_output$asp.effect)
+asp.effects
+two_pops <- asp.effects[c(1,2,7)]
+three_pops <- asp.effects[c(5,8)]
+four_pops_sym <- asp.effects[c(3,4,9)]
+four_pops_asym <- asp.effects[c(6)]
 
-s1 <- filter(all_output,asp.effect==c(-11))%>% 
+all_plot <- all_output %>% 
   group_by(clim.sd, asp.mag, move.rate, rho, asp.effect) %>%
   summarize(agg.pop.var = mean(pop.var),
             pop.lam = mean(lt.pop.lam),
-            .groups="drop")
+            .groups="drop") 
 
-s2 <- filter(all_output,asp.effect==c(-1.11))%>% 
+```
+
+## Comparing two population scenarios
+```{r simple_two_pops}
+move.rates <- c(0.1)
+rhos <- c(0)
+asp.mags <- seq(0,20,5)
+
+two_pop_plot <- filter(all_plot,asp.effect%in%two_pops)
+# head(two_pop_plot)
+
+# line plot of asp mag selection
+filter(all_plot,asp.effect%in%two_pops & 
+                         move.rate%in%move.rates &
+                         rho%in%rhos &
+                         asp.mag%in%asp.mags) %>% 
+  ggplot(.,aes(x=clim.sd,y=pop.lam,color=factor(move.rate)))+
+  geom_point()+
+  geom_smooth()+
+  facet_grid(asp.effect~asp.mag)
+
+two_pop_contour <- filter(all_plot,
+       asp.effect%in%two_pops & 
+       move.rate%in%move.rates &
+       rho%in%rhos)
+
+cols <- contour_colors(two_pop_contour,0.05,var = "lambda")
+
+ggplot(two_pop_contour,aes(x=clim.sd,y=asp.mag,z=pop.lam))+
+  geom_contour_filled()+
+  facet_grid(asp.effect~move.rate, labeller = labeller(asp.effect = c( `c(-1,1)` = "-1 & 1",
+                                                                       `c(-1.1,1)` = "-1.1 & 1",
+                                                                       `c(-2,1)` = "-2 & 1" ),
+                                                       move.rate = c(`0` = "0%", `0.1` = "10%", `0.2` = "20%")) )+
+  scale_fill_manual(values=cols)+
+  theme_classic(base_size = 18)
+
+two_pop_all <- filter(all_output,asp.effect%in%two_pops & move.rate %in% move.rates & rho %in% rhos)
+
+what <- filter(two_pop_all,asp.mag <= 10 & clim.sd==1 & move.rate == 0) 
+
+ggplot(what,aes(x=asp.mag,y=lt.pop.lam,color=asp.effect))+
+  geom_point()+
+  geom_smooth(se=F)+
+  scale_x_continuous(breaks=seq(0,10,5))
+```
+
+
+```{r}
+move.mx.i <- moveMx_fun(n.subpops = 2,move.rate = 0.05)
+asp.mag.i = 12
+clim.sd.i  = 8
+sim.yrs = 200
+burn.in.yrs = 10
+asp.effects = c(-1,1)
+
+seeds <- seeds_df$avg.seeds[seeds_df$asp.effects==paste(asp.effects,collapse=",") &seeds_df$asp.mag==asp.mag.i]
+reps <- 10
+
+params <- list(burn.in.yrs = burn.in.yrs,
+                      sim.yrs = sim.yrs,
+                      clim.sd = clim.sd.i,
+                      move.mx = move.mx.i,
+                      asp.mag = asp.mag.i,
+                      asp.effects = asp.effects,
+                      seeds = seeds,
+                      rho=0)
+
+out_df <- NULL
+
+for(i in 1:reps){
+  
+  out <- do.call(simfun_exponential,params) %>% 
+    filter(year>burn.in.yrs) %>% 
+    mutate(rep=i)
+  out_df <- rbind(out_df,out)
+  rm(out)
+}
+
+mean.geoMean <- out_df %>% 
+  group_by(rep) %>% 
+  summarize(g.mean = geoMean(pop.lam)) %>% 
+  ungroup()
+mean.geoMean <- mean(mean.geoMean$g.mean) %>% round(.,4)
+
+ggplot(out_df,aes(x=year,group = rep))+
+  geom_line(aes(y=`size_-1`,color=paste("subpop ",asp.effects[1])  ))+
+  geom_line(aes(y=`size_1`,color=paste("subpop ",asp.effects[2])))+
+  labs(y = "subpop sizes", title=paste("Aspect effects =", paste(asp.effects,collapse = " & ") ," , asp.mag =", asp.mag.i,", clim.sd =",clim.sd.i))+
+  theme_bw(base_size = 14)+
+  theme(legend.title = element_blank())
+
+ggplot(out_df,aes(x=year,group = rep))+
+  geom_line(aes(y=`s_-1`,color=paste("subpop ",asp.effects[1])),alpha=0.5)+
+  geom_line(aes(y=`s_1`,color=paste("subpop ",asp.effects[2])),alpha=0.5)+
+  geom_line(aes(y=`pop.lam`,color="pop lam"))+
+  geom_hline(yintercept=1)+
+  geom_hline(yintercept=mean.geoMean,color="red",linewidth=1)+
+ # scale_y_continuous(limits = c(0.5,8))+
+  labs(y = "subpop and pop lambdas", 
+       title=paste("Aspect effects =", paste(asp.effects,collapse = " & ") ," , asp.mag =", asp.mag.i,", clim.sd =",clim.sd.i))+
+  theme_bw(base_size = 14)+
+  theme(legend.title = element_blank())
+
+# ggplot(out,aes(x=year))+
+#   geom_point(aes(y=`s_-1`,color="subpop -1"))+
+#   geom_point(aes(y=`s_1`,color="subpop 1"))+
+#   geom_line(aes(y=pop.lam,color="ann lam"))+
+#   geom_hline(yintercept = geoMean(out$pop.lam))+
+#   labs(title= paste("geo. mean = ",round(geoMean(out$pop.lam),3)))+
+#   geom_hline(yintercept = 1,color="red")+
+#   theme_minimal()
+
+```
+
+clim hists
+```{r}
+
+clims <- data.frame(clim = rnorm(10000,0,15)) 
+qs <- quantile(clims$clim,c(0.25,0.75))
+
+ggplot(clims,aes(x=clim))+
+  geom_histogram(fill="grey75",color="black",bins=50)+
+  geom_vline(xintercept = qs,color="red")
+
+
+
+df = expand.grid(asp.effect = seq(0,1,by=0.1),
+                 asp.mag = seq(0,15,by=1)) %>% 
+  mutate(shift = asp.effect*asp.mag)
+
+```
+
+
+
+```{r}
+new_output <- read_csv("SimOutput/S1_2025-02-17 17:14:06.csv")
+
+new_plot <- new_output %>%
   group_by(clim.sd, asp.mag, move.rate, rho, asp.effect) %>%
   summarize(agg.pop.var = mean(pop.var),
             pop.lam = mean(lt.pop.lam),
-            .groups="drop")
+            .groups="drop") %>% 
+  filter(rho==0.1)
 
-rho.i = 0
-move.rate.i = c(0,0.05,0.1)
-
-s1_plot <- filter(s1,rho==rho.i & move.rate %in% move.rate.i)
-s2_plot <- filter(s2,rho==rho.i & move.rate %in% move.rate.i)
-
-ggplot(s1_plot)+
-  geom_contour_filled(aes(x=clim.sd,y=asp.mag,z=pop.lam))+
-  labs(x="Climate SD",y="Microhabitat effect strength\n(coefficient/scalar)",fill="LT lambda",title="Microhabitat effects = c(-1,1)")+
-  theme_bw(base_size=14)+
+ggplot(new_plot,aes(x=clim.sd,y=asp.mag,z=pop.lam))+
+  geom_contour_filled()+
   facet_wrap(~move.rate)
 
-ggplot(s2_plot)+
-  geom_contour_filled(aes(x=clim.sd,y=asp.mag,z=pop.lam))+
-  labs(x="Climate SD",y="Microhabitat effect strength\n(coefficient/scalar)",fill="LT lambda",title="Microhabitat effects = c(-1,1)")+
-  theme_bw(base_size=14)+
-  facet_wrap(~move.rate)
+```
 
+
+```{r}
+n1p1_lams <- ggplot(n1p1,aes(x=clim))+
+  geom_hline(yintercept=1)+
+  geom_point(aes(y=`s_-1`,color="subpop -1",alpha=0.75))+
+  geom_point(aes(y=`s_1`,color="subpop 1",alpha=0.75))+
+  geom_point(aes(y=pop.lam,color="pop"))+
+  labs(title="-1 & 1")+
+  theme(legend.position = "top");n1p1_lams
+
+n1p1_hist <- ggplot(n1p1,aes(x=clim))+
+  geom_histogram()
+
+cowplot::plot_grid(n1p1_lams,n1p1_hist,ncol=1)
+
+seeds_n2p1 <- seeds_df$avg.seeds[seeds_df$asp.effects=="-1.1,1"&seeds_df$asp.mag==5]
+n2p1_params <- list(burn.in.yrs = 50,
+                      sim.yrs = 500,
+                      clim.sd = 0.5,
+                      move.mx = move.mx,
+                      asp.mag = 2,
+                      asp.effects = c(-1,1),
+                      seeds = seeds_n2p1,
+                      rho=0)
+
+n2p1 <- do.call(simfun_exponential,n2p1_params) %>% 
+  filter(year>10)
+
+ggplot(n2p1,aes(x=year))+
+  geom_point(aes(y=`size_1`,color="pos"))+
+  geom_point(aes(y=`size_-1`))
+
+n2p1_lams <- ggplot(n2p1,aes(x=clim))+
+  geom_hline(yintercept=1)+
+  geom_point(aes(y=`s_-1.1`,color="subpop -1"),alpha=0.75)+
+  geom_point(aes(y=`s_1`,color="subpop 1"),alpha=0.75)+
+  geom_point(aes(y=pop.lam,color="pop"))+
+  labs(title="-2 + 1")+
+  theme(legend.position = "top");n2p1_lams
+
+n2p1_hist <- ggplot(n2p1,aes(x=clim))+
+  geom_histogram()
+
+cowplot::plot_grid(n2p1_lams,n2p1_hist,ncol=1)
+
+geoMean(n1p1$pop.lam)
+geoMean(n2p1$pop.lam)
+
+mean(n1p1$pop.lam)
+mean(n2p1$pop.lam)
+
+```
+
+```{r}
+set.seed(42)  # For reproducibility
+
+# Define reasonable ranges
+clim.sd.range = seq(0.01, 5.0, length.out = 5)
+asp.mag.range = seq(0.01, 2, length.out = 5)
+asp.effects.range = seq(-1, 1, length.out = 5)
+
+# Generate a small, structured test grid
+param_grid = expand.grid(
+  clim.sd = clim.sd.range,
+  asp.mag = asp.mag.range,
+  asp.effects = asp.effects.range
+)
+
+# Randomly sample 20 parameter sets for testing
+test_params = param_grid[sample(nrow(param_grid), 20), ]
+
+test_results = lapply(1:nrow(test_params), function(i) {
+  params = test_params[i, ]
+  sim_result = simfun_exponential(
+    burn.in.yrs = 10, sim.yrs = 200, 
+    clim.sd = params$clim.sd, asp.mag = params$asp.mag, 
+    asp.effects = rep(params$asp.effects, 3),  # Assuming 3 subpops
+    move.mx = diag(9), seeds = 50, rho = 0.5
+  )
+  
+  # Calculate mean and variance of population lambda
+  final_lambda = mean(sim_result$pop.lam, na.rm = TRUE)
+  lambda_sd = sd(sim_result$pop.lam, na.rm = TRUE)
+  
+  # Check for extinction
+  subpop_sizes = rowMeans(sim_result[, grep("^size_", colnames(sim_result))], na.rm = TRUE)
+  extinction_flag = ifelse(any(subpop_sizes < 10), TRUE, FALSE)
+  
+  return(data.frame(
+    clim.sd = params$clim.sd,
+    asp.mag = params$asp.mag,
+    asp.effects = params$asp.effects,
+    final_lambda = final_lambda,
+    lambda_sd = lambda_sd,
+    extinct = extinction_flag
+  ))
+})
+
+# Convert list to data frame
+test_results_df = do.call(rbind, test_results)
+
+# View results
+print(test_results_df)
+
+
+# Scatterplot: Mean lambda vs. Climate SD
+ggplot(test_results_df, aes(x = clim.sd, y = final_lambda, color = factor(asp.mag), shape = as.factor(extinct))) +
+  geom_point(size = 3) +
+  labs(x = "Climate Standard Deviation", y = "Mean Population Lambda",
+       title = "Effect of Climate Variability on Population Growth",
+       color = "Aspect Magnitude", shape = "Extinction") +
+  theme_minimal()
+
+# Scatterplot: Variance in lambda vs. Climate SD
+ggplot(test_results_df, aes(x = clim.sd, y = lambda_sd, color = factor(asp.mag), shape = as.factor(extinct))) +
+  geom_point(size = 3) +
+  # geom_line()+
+  labs(x = "Climate Standard Deviation", y = "Variance in Lambda",
+       title = "Interannual Variance in Growth Rate",
+       color = "Aspect Magnitude", shape = "Extinction") +
+  theme_minimal()
+
+```
+
+```{r}
+set.seed(42)  # For reproducibility
+
+# Define reasonable ranges based on model and past tests
+clim.sd.range = seq(0.01, 5.0, length.out = 5)  # Climate variability (adjust as necessary)
+asp.mag.range = seq(0.01, 2, length.out = 5)    # Aspect magnitude (affects the microclimate)
+asp.effects.range = list(                      # Aspect effects combinations (symmetrical/asymmetrical)
+  c(-1, 1),                    # Simple symmetrical effect
+  c(-1.1, -1, 1, 1.1),         # Moderate asymmetry
+  c(-2, 1),                    # Stronger asymmetry, one population under stress
+  c(-1.5, -1, 1, 1.5)          # More dramatic effect, with more subpopulations
+)
+
+# Expand grid for all combinations of the above parameters
+param_grid = expand.grid(
+  clim.sd = clim.sd.range,
+  asp.mag = asp.mag.range
+)
+
+# Combine grid with all the aspect effect combinations
+param_grid_with_asp = do.call(rbind, lapply(asp.effects.range, function(asp_effects) {
+  temp_grid = param_grid
+  temp_grid$asp.effects = rep(list(asp_effects), nrow(temp_grid))
+  return(temp_grid)
+}))
+
+# Randomly sample 20 parameter sets for testing (or adjust as needed)
+test_params = param_grid_with_asp[sample(nrow(param_grid_with_asp), 20), ]
+
+# Run simulations on each sampled parameter set
+test_results = lapply(1:nrow(param_grid_with_asp), function(i) {
+  params = param_grid_with_asp[i, ]
+  
+  move.mx.i <- moveMx_fun(n.subpops = length(unlist(params$asp.effects)), move.rate = 0.05)
+  
+  # Run the simulation using the sampled parameter set
+  sim_result = simfun_exponential(
+    burn.in.yrs = 10, sim.yrs = 500, 
+    clim.sd = params$clim.sd, asp.mag = params$asp.mag, 
+    asp.effects = unlist(params$asp.effects),  # Ensure aspect effects are properly formatted
+    move.mx = move.mx.i, seeds = 50, rho = 0.5
+  )
+  
+  # Calculate mean and variance of population lambda
+  final_lambda = mean(sim_result$pop.lam, na.rm = TRUE)
+  lambda_sd = sd(sim_result$pop.lam, na.rm = TRUE)
+  
+  # Track subpopulation sizes (assuming columns are named "size_1", "size_2", ...)
+  subpop_sizes = sim_result[, grep("^size_", colnames(sim_result))]
+  
+  # Check for extinction (defined as any subpop size < 10)
+  extinction_flag = apply(subpop_sizes, 2, function(x) any(x < 10))
+  
+  # Gather results into a dataframe
+  result = data.frame(
+    clim.sd = params$clim.sd,
+    asp.mag = params$asp.mag,
+    asp.effects = paste(params$asp.effects, collapse = ","),
+    final_lambda = final_lambda,
+    lambda_sd = lambda_sd,
+    extinct = any(extinction_flag)  # If any subpop goes extinct
+  )
+  
+  # Track subpopulation dynamics
+  subpop_dynamics = as.data.frame(subpop_sizes)
+  subpop_dynamics$year = sim_result$year  # Assuming "year" column is present
+  
+  # Combine the simulation results with subpopulation dynamics
+  result_long = reshape2::melt(subpop_dynamics, id.vars = "year", variable.name = "subpop", value.name = "size")
+  result_long$clim.sd = params$clim.sd
+  result_long$asp.mag = params$asp.mag
+  result_long$asp.effects = paste(params$asp.effects, collapse = ",")
+  
+  # Return both the summary results and subpopulation dynamics
+  return(list(
+    summary = result,  # Summary statistics
+    subpop_dynamics = result_long  # Subpopulation dynamics
+  ))
+})
+
+# Combine all the results
+summary_results = do.call(rbind, lapply(test_results, function(x) x$summary))
+subpop_dynamics_results = do.call(rbind, lapply(test_results, function(x) x$subpop_dynamics))
+
+# Load the simulation results
+# final_results <- read.csv("SimOutput/explored_parameter_combinations.csv")
+
+# Plot: Final Lambda vs. Climate SD (clim.sd)
+ggplot(final_results, aes(x = clim.sd, y = final_lambda, color = asp.mag, shape = as.factor(extinct))) +
+  geom_point(size = 4) +
+  labs(
+    title = "Final Lambda vs. Climate SD",
+    x = "Climate SD",
+    y = "Final Lambda (Mean Growth Rate)",
+    color = "Aspect Magnitude",
+    shape = "Extinction"
+  ) +
+  theme_minimal() +
+  scale_shape_manual(values = c(16, 17))  # 16 = solid circle, 17 = solid triangle
+
+# Plot: Final Lambda vs. Aspect Magnitude (asp.mag)
+ggplot(final_results, aes(x = asp.mag, y = final_lambda, color = clim.sd, shape = as.factor(extinct))) +
+  geom_point(size = 4) +
+  labs(
+    title = "Final Lambda vs. Aspect Magnitude",
+    x = "Aspect Magnitude",
+    y = "Final Lambda (Mean Growth Rate)",
+    color = "Climate SD",
+    shape = "Extinction"
+  ) +
+  theme_minimal() +
+  scale_shape_manual(values = c(16, 17))  # 16 = solid circle, 17 = solid triangle
+
+library(ggplot2)
+
+# Assuming subpop_dynamics_results is the combined dataset with subpopulation dynamics
+# Example: subpop_dynamics_results <- read.csv("subpop_dynamics_results.csv")
+
+# Plot subpopulation size dynamics over time
+ggplot(filter(subpop_dynamics_results,year>10&asp.mag==2), aes(x = year, y = size, color = subpop)) +
+  geom_line() +
+  facet_grid(clim.sd~asp.effects) +  # Facet by asp.effects to see dynamics for different aspect effects
+  labs(title = "Subpopulation Size Dynamics Over Time",
+       x = "Year",
+       y = "Subpopulation Size") +
+  theme_minimal() +
+  theme(legend.position = "none")  # Remove the legend if you have too many subpopulations
+
+head(subpop_dynamics)
+
+# Plot extinction events over parameter ranges
+ggplot(subpop_dynamics_results, aes(x = clim.sd, y = asp.mag, fill = extinct)) +
+  geom_tile() + 
+  scale_fill_manual(values = c("white", "red"), labels = c("No Extinction", "Extinct")) +
+  labs(title = "Extinction Events Across Parameter Ranges",
+       x = "Climate SD",
+       y = "Aspect Magnitude") +
+  theme_minimal() +
+  facet_wrap(~ asp.effects) 
 ```
 
