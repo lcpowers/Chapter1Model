@@ -18,7 +18,6 @@ library(parallel)
 library(doParallel)
 library(foreach)
 
-
 seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 21:30:11.114866.csv")
 
 source("ModelFunctions/ParamVals.R")
@@ -28,122 +27,141 @@ source("ModelFunctions/survival_fun.R")
 source("ModelFunctions/growth_fun.R")
 source("ModelFunctions/logit2prob.R")
 source("ModelFunctions/subpop_mx_fun.R")
+```
 
+### Simulate data
+Very basic:
+- 2 subpopulations, aspect effects = -1,1
+- optimal climate standard deviation
+- Range of movement rates and 
+```{r simple_data_sim}
 
+reps <- 5
+clim.sds <- c(2,10,15)
+asp.mags <- c(2,5,10)
+rhos <- 0 # c(0,0.2,0.2)
+move.rates <- c(0.05,0.2,0.4)
+asp.effects <- c(-1,1)# list(c(-1,1))
+timesteps <- 20
+
+# rep.i = 5
+# move.rate.i = 0.05
+# clim.sd.i = 2
+# asp.mag.i = 10
+# rho.i = 0
+
+cl = makeCluster(spec = 20)
+registerDoParallel(cl = cl)
+
+foreach(rep.i = 1:reps,.packages=c("tidyverse","EnvStats")) %:%
+  foreach(move.rate.i = move.rates) %:%
+      foreach(clim.sd.i = clim.sds) %:%
+        foreach(asp.mag.i = asp.mags) %:% 
+          foreach(rho.i = rhos) %dopar% {
+
+            growth_params.i <- growth_params;surv_params.i <- surv_params
+            asp.effects.i <-  asp.effects # asp.effects[asp.eff.i] %>% unlist()
+
+            if(clim.sd.i == 0) {clim.sd.i = 0.01}
+            
+            clim_vals <- clim_vals_fun(clim.sd = clim.sd.i, rho=rho.i, timesteps = timesteps)
+            
+            # plot(clim_vals);lines(clim_vals)
+            seeds.i = mean(seeds_df$seeds[seeds_df$asp.mag==asp.mag.i & seeds_df$asp.effects == paste(asp.effects.i,collapse = ",")])
+
+            df <- simulate_pop_data(surv_params = surv_params.i,
+                        growth_params = growth_params.i,
+                        seeds = seeds.i,
+                        timesteps = timesteps,
+                        clim_vals = clim_vals,
+                        asp.effects = asp.effects.i,
+                        move.rate = move.rate.i,
+                        asp.mag = asp.mag.i) %>% 
+              mutate(rep = rep.i,
+                     asp.mag = asp.mag.i,
+                     rho = rho.i,
+                     clim.sd = clim.sd.i,
+                     move.rate = move.rate.i,
+                     asp.effects.grp = factor(paste(asp.effects.i,collapse=", ")) )
+            
+            # write_csv(df, paste0("SimOutput/simData/server/V1/",round(Sys.time()),".csv"))
+            write_csv(df,paste0("SimOutput/simData/server/V2/aspmag",asp.mag.i,"/clim",clim.sd.i,"_rho",rho.i,"_move",move.rate.i,"_rep",rep.i,".csv"))
+            rm(df,clim_vals);gc()
+            return(NULL)
+            
+            }
+  
+stopCluster(cl)
+```
+
+### Looking at output to check it
+```{r}
+
+sim_data_fns <- list.files("SimOutput/simData/server/V1/aspmag10",
+                           pattern = "clim10_rho0_move0.05",
+                           full.names = T)
+
+sim_data <- vroom::vroom(sim_data_fns) %>% 
+  filter(timestep>0) %>% 
+  filter(!is.na(asp.mag))
+
+stage.nums <- sim_data %>% 
+  filter(end.stage!="dead") %>% 
+  group_by(timestep,stage = end.stage,rep,asp.effect) %>% 
+  summarise(size = sum(survival_status,na.rm=T)) 
+
+ggplot(stage.nums,aes(x=timestep,y=size,color=factor(rep)))+
+  geom_point(aes(shape=factor(asp.effect)))+
+  geom_line(aes(linetype=factor(asp.effect)))+
+  facet_wrap(~stage,scales="free_y")+
+  theme_few(base_size = 14)+
+  labs(title = "rnorm")+
+  theme(panel.grid.major = element_line(colour = "grey90",linetype=3),
+        panel.grid.minor = element_line(colour = "grey90",linetype=3))
+
+pop.size <- sim_data %>% 
+  group_by(timestep,rep) %>% 
+  summarise(size=sum(survival_status,na.rm=T)) %>% 
+  mutate(ann.lam = size/lag(size)) %>% 
+  mutate(geo.mean = geoMean(ann.lam,na.rm=T))
+
+ggplot(pop.size,aes(x=timestep,y=size,color=factor(rep)))+
+  geom_point()+
+  geom_line()s
+
+```
+
+# Test chunk
+```{r}
 # Constants
-timesteps <- 50
+timesteps <- 20
 start_pop <- c(840,20,50)
 
 # Things to eventually loop over
-clim.sd <- 0.001
+clim.sd <- 1
 rho <- 0
-asp.mag <- 0
+asp.mag <- 2
 asp.effects <- c(-1,1)
-move.rate <- 0.05
+move.rate <- 0.1
 
 # Within a loop later
 clim_vals <- clim_vals_fun(clim.sd = clim.sd, rho=rho, timesteps = timesteps)
 seed_vec <- seeds_df$seeds[seeds_df$asp.mag==asp.mag & seeds_df$asp.effects==paste(asp.effects,collapse = ",")]
 seeds <- mean(seed_vec)
 
-df <- simulate_pop_data(surv_params = surv_params,
+df1 <- simulate_pop_data(surv_params = surv_params,
                         growth_params = growth_params,
                         seeds = seeds,
                         start_pop = start_pop,
-                        timesteps = 20,
-                        clim_vals = clim_vals,
-                        asp.effects = c(-1,1),
-                        asp.mag = asp.mag)
-
-```
-
-
-### making a for-loop out of the code above
-```{r}
-
-reps <- 2
-clim.sds <- seq(0,15,5);clim.sds[clim.sds==0]=0.01
-asp.mags <- seq(0,15,5)
-rhos <- seq(0,0.5,0.2)
-move.rates <- seq(0,0.2,0.1)
-asp.effects <- list(c(-1,1))
-start_pop <- c(840,20,50)
-timesteps <- 20
-
-cl = makeCluster(spec = 2)
-registerDoParallel(cl = cl)
-
-sim_data_out <- foreach(rep.i = 1:reps, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
-  foreach(asp.eff.i = 1:length(asp.effects), .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
-    foreach(move.rate.i = move.rates, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
-      foreach(clim.sd.i = clim.sds, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:%
-        foreach(asp.mag.i = asp.mags, .combine = rbind,.packages=c("tidyverse","EnvStats")) %:% 
-          foreach(rho.i = rhos,.combine = rbind,.packages=c("tidyverse","EnvStats")) %dopar% {
-            
-            asp.effects.i <- asp.effects[asp.eff.i] %>% unlist()
-            
-            clim_vals <- clim_vals_fun(clim.sd = clim.sd.i, rho=rho.i, timesteps = timesteps)
-            seeds.i = mean(seeds_df$seeds[seeds_df$asp.mag==asp.mag.i & seeds_df$asp.effects == paste(asp.effects.i,collapse = ",")])
-            
-            df <- simulate_pop_data(surv_params = surv_params,
-                        growth_params = growth_params,
-                        seeds = seeds.i,
-                        start_pop = start_pop,
                         timesteps = timesteps,
                         clim_vals = clim_vals,
-                        asp.effects = asp.effects.i,
-                        asp.mag = asp.mag.i) %>% 
-              mutate(rep = rep.i,
-                     asp.mag = asp.mag.i,
-                     rho = rho.i,
-                     clim.sd = clim.sd.i,
-                     asp.effects.grp =asp.effects[asp.eff.i] )
-            
-            write_csv(df, paste0("SimOutput/simData/V2_",round(Sys.time()),".csv"))
-            # write_csv(df,paste0("SimOutput/simData/clim",clim.sd.i,"_aspmag",asp.mag.i,"_aspeffs",paste(asp.effects.i,collapse = "."),"_rho",rho.i,"_r",rep.i,".csv"))
-            return(df)
-            
-          }
-stopCluster(cl)
+                        asp.effects = c(-1,1),
+                        asp.mag = asp.mag,
+                        move.rate = move.rate)
+
+
 ```
 
-```{r}
-
-sim_data_fns <- list.files("SimOutput/simData/",full.names = T)
-sim_data <- vroom::vroom(sim_data_fns) %>% 
-  filter(timestep>0) %>% 
-  filter(is.na(asp.mag))
-```
-
-
-### Looking at output to check it
-```{r}
-tallies <- df %>% 
-  group_by(individual_id) %>% tally()
-
-stage.nums <- df %>% 
-  group_by(timestep,stage) %>% 
-  summarise(size = sum(survival_status))
-
-ggplot(stage.nums,aes(x=timestep,y=size,color=stage))+
-  geom_point()
-
-table(df$stage,df$timestep)
-
-pop.size <- df %>% 
-  group_by(timestep) %>% 
-  summarise(size=sum(survival_status)) %>% 
-  mutate(ann.lam = size/lag(size)) %>% 
-  mutate(geo.mean = geoMean(ann.lam,na.rm=T))
-
-ggplot(pop.size,aes(x=timestep,y=size))+
-  geom_point()
-
-ggplot(pop.size,aes(x=timestep,y=ann.lam))+
-  geom_point()+
-  geom_hline(yintercept = pop.size$geo.mean)
-
-```
 
 - Take the actual values that you have and say what are the mean and the variance of lambda for that model with two populations
 - Key question: If you ignore subpopulations and you estimate the mean, variance, and covariance 
@@ -151,7 +169,7 @@ ggplot(pop.size,aes(x=timestep,y=ann.lam))+
 - What is it's prediction about stochastic growth rate or extinction rate, etc. 
 
 1. In each year, what is the estimated growth and surv or juvs
-2. What's the mean and temporal vital rate and covariation
+2. What's the mean and temporal variance and covariation
 3. Function of year and aspect effect 
 4. Assume you know the movement rate
 
