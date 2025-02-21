@@ -1,0 +1,48 @@
+---
+title: "SimDataAnalysis"
+author: "Claire Powers"
+date: "2025-02-18"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(tidyverse)
+library(vroom)
+library(lme4)
+
+simdatafiles <- list.files("SimOutput/simData/server/V1",full.names=T)
+
+for(i in simdatafiles){
+  
+  tmp.filename <- simdatafiles[1]
+  tmp <- read_csv(tmp.filename)
+  
+  surv_df <- tmp %>% select(timestep,
+                            id = individual_id,
+                            stage,
+                            surv = survival_status,
+                            asp.effect)
+
+  surv.rates <- surv_df %>% 
+    group_by(timestep,stage,asp.effect) %>% 
+    summarize(surv_rate = mean(surv))
+  
+  timesteps <- 1:max(tmp$timestep)
+  
+  for(t in 1:timesteps){
+    
+    df <- filter(surv_df,timestep == t-1|timestep==t) %>% 
+      filter(surv == 1)
+
+  }
+  
+}
+
+
+```
+
+
