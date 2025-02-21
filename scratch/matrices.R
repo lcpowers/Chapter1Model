@@ -117,3 +117,11 @@ diag(move.mx)=1
 move.mx[1,1]=1-move
 move.mx[4,4]=1-move
 move.mx%*%pop.mx
+
+#######
+seeds <- c(100,200)
+move.rate <- 0.1
+move.mx <- matrix(data = c((1-move.rate),move.rate,
+                           move.rate,(1-move.rate)),nrow = 2,byrow=T)
+
+move.mx%*%seeds

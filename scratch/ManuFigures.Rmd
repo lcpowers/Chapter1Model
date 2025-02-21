@@ -75,15 +75,21 @@ for(i in 1:nrow(lam_df)){
 }
 
 ggplot(lam_df,aes(x=clim))+
+  annotate("rect", xmin=-20, xmax=20, ymin=-Inf, ymax=Inf, alpha=0.2, fill="grey70")+
   geom_line(aes(y=s1,color="-1"),linewidth = 1)+
   geom_line(aes(y=s2,color="+1"),linewidth = 1)+
-  # geom_line(aes(y=pop,color="pop"))+
   theme_bw(base_size = 16)+
   scale_x_continuous(limits = c(-40,40))+
   # theme(legend.position = "none")+
   labs(title=paste0("Microhabitat conditions relative to regional average (0) = ",list(asp.effects)))+
   facet_wrap(~asp.mag,ncol=2)+
   scale_color_manual(values = c("dodgerblue","sienna2"))
+
+
+lam_df2 <- lam_df %>% 
+  filter(clim>-21 & clim <21) %>% 
+  group_by(asp.mag) %>% 
+  mutate(corr = cor(s1,s2))
 
 asp.mags = seq(1,20,5)
 clim.sds = seq(5,20,5)
@@ -196,43 +202,5 @@ ggplot(surv_df,aes(x=clim,y=juv,color=place.name))+
 
 ```
 
-# population dynamics through time
-```{r pops_through_time}
-
-source("subpopsThruTime.R")
-
-burn.in.yrs = 200
-sim.yrs = 100
-clim.sd.i = 2
-move.rate = 0
-asp.mag.i = 2
-asp.effects = c(-1,1)
-n.subpops = as.numeric(length(asp.effects))
-subpop.output = T
-seeds <- seed_df %>% filter(asp.effects=="-1,1" & asp.mag==asp.mag.i)
-seeds <- 6210
-
-df <- subpopsThruTime_fun(burn.in.yrs = burn.in.yrs,
-                          sim.yrs = sim.yrs,
-                          clim.sd = 3,
-                          move.rate = 0.05,
-                          asp.mag = asp.mag,
-                          asp.effects = c(-1,1),
-                          seeds = seeds,
-                          n.subpops = 2) %>% 
-  filter(year>burn.in.yrs) %>% 
-  mutate(year = year-burn.in.yrs) 
-
-ggplot(filter(df,year>=0),aes(x=year))+
-  geom_line(aes(y=sub1.size,color="Subpopulation A"),linewidth=1.5)+
-  geom_line(aes(y=sub2.size,color="Subpopulation B"),linewidth=1.5)+
-  labs(x="Year",y="Size through time")+
-  theme_bw(base_size = 16)+
-  theme(legend.title = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.text.y = element_blank())+
-  scale_x_continuous(expand=c(0,0 ))
-
-```
 
 
