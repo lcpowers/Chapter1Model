@@ -203,10 +203,10 @@ write_csv(maxLam_by_climsd_df,paste0("seedSearchOutput/maxLam_",round(Sys.time()
 ```{r seeds_search}
 
 burn.in <- 50
-sim.years <- 250
+sim.years <- 200
 years <- burn.in + sim.years
 
-seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2025-02-21 09:47:20.csv",
+seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2025-02-21 09:40:06.csv",
                            col_types = cols(asp.effects=col_character())) %>% 
   group_by(asp.mag,asp.effects,clim.sd) %>% # For each clim.sd/asp.mag combination
   summarise(mean.lt.lam = mean(lt.lam),
@@ -226,10 +226,10 @@ cl = makeCluster(20)
 registerDoParallel(cl = cl)
 
 seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvStats")) %dopar% {
+  # Go through this loop 20 times across 20 cores
   for(i in 1:nrow(seed_climsd_df)){
     
-    # asp.effects.i <- seed_climsd_df$asp.effects[i] %>% unlist()
-    asp.effects.i <- c(-1.5,1)
+    asp.effects.i <- seed_climsd_df$asp.effects[i] %>% str_split(.,pattern=",",simplify = T)
     n.subpops.i <- length(asp.effects.i)
     start.cells <- F.rows <- seq(1,n.subpops.i*3,by=3)
     
@@ -301,8 +301,7 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
       
       annual.df <- filter(annual.df,yr>burn.in)
       lt.lam <- geoMean(annual.df$lam)
-      # print(c(lt.lam,seeds))
-      
+
       x <- (lt.lam - 1)^2
       
       if((lt.lam - 1)>0){ # If lambda is too high, set the max.seed value to be the current seed value (lower the ceiling)
@@ -318,7 +317,7 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
     }
   
     seed_climsd_df$seeds[i] <- seeds
-    seed_climsd_df$rep <- r
+    seed_climsd_df$rep[i] <- r
     
     # print(c(i,difftime(time1 = Sys.time(), time2=timeStart)))
     
@@ -327,8 +326,13 @@ seed_search <- foreach(r = 1:reps, .combine=rbind, .packages=c("tidyverse","EnvS
 }
 stopCluster(cl) 
 write_csv(seed_search,paste0("seedSearchOutput/seedSearch_",Sys.time(),".csv"))
-
 ```
+
+
+###########################################################################
+###########################################################################
+########################## Scratch and old code ###########################
+
 
 #### Plotting a range of values from the growth fun
 ```{r more_growthFun}
@@ -415,10 +419,6 @@ ggplot(surv_df,aes(x=clim,y=flrg,color=as.factor(asp.effect)))+
 
 
 ```
-
-###########################################################################
-###########################################################################
-########################## Scratch and old code ###########################
 
 ### Finding seed # (to set F cell) based on magnitude and direction of aspect effect
 ```{r seednumbers}
