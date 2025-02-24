@@ -101,7 +101,8 @@ sim_data_fns <- list.files("SimOutput/simData/server/V1/aspmag10",
                            pattern = "clim10_rho0_move0.05",
                            full.names = T)
 
-sim_data <- vroom::vroom(sim_data_fns) %>% 
+sim_data <- vroom::vroom(sim_data_fns,
+                         col_types = ) %>% 
   filter(timestep>0) %>% 
   filter(!is.na(asp.mag))
 
