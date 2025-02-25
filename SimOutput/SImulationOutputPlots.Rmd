@@ -56,6 +56,14 @@ contour_colors <- function(df,binwidth,var){
     breaks <- seq(min(limits),max(limits),by=binwidth)
     pal <- colorRampPalette( brewer.pal(9,"Spectral") )(length(breaks)) 
     # scico(n = length(breaks),palette = "vik",direction = -1)
+  } else if(var=="corr") {
+    
+        
+    limits <- round(max(abs(1 - df$mean.cor)) * c(-1, 1) + 1,1)
+    breaks <- seq(min(limits),max(limits),by=binwidth)
+    pal <- scico(n = length(breaks),palette = "vik",direction = -1)
+    # scico(n = length(breaks),palette = "vik",direction = -1)
+    
   } else {print("no valid variable provided")}
   
   
@@ -74,16 +82,15 @@ seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-22 08:11:05.956603.csv
   group_by(asp.effects,asp.mag,clim.sd) %>% 
   summarize(avg.seeds = round(mean(seeds)))
 
+all_output <- read_csv("SimOutput/S1_2025-02-24 15:59:01.csv")
 
-all_output <- read_csv("SimOutput/S1_2025-02-24 10:45:07.csv")
-
-asp.effects <- unique(all_output$asp.effect)
+asp.effects <- unique(all_output$asp.effects)
 asp.effects
 two_pops <- asp.effects[c(1,2)]
 three_pops <- asp.effects[c(3)]
 
 all_plot <- all_output %>% 
-  group_by(clim.sd, asp.mag, move.rate, rho, asp.effect) %>%
+  group_by(clim.sd, asp.mag, move.rate, rho, asp.effects) %>%
   summarize(agg.pop.var = mean(pop.var),
             pop.lam = mean(lt.pop.lam),
             .groups="drop") 
@@ -95,20 +102,20 @@ all_plot <- all_output %>%
 rhos <- c(0)
 asp.mags <- seq(0,20,5)
 
-two_pop_plot <- filter(all_plot,asp.effect%in%two_pops)
+two_pop_plot <- filter(all_plot,asp.effects%in%two_pops)
 
 # line plot of asp mag selection
-filter(all_plot,  asp.effect%in%two_pops & 
+filter(all_plot,  asp.effects%in%two_pops & 
                          # move.rate%in%move.rates &
                          rho%in%rhos &
                          asp.mag%in%asp.mags) %>% 
   ggplot(.,aes(x=clim.sd,y=pop.lam,color=factor(move.rate)))+
   geom_point()+
   geom_smooth()+
-  facet_grid(asp.effect~asp.mag)
+  facet_grid(asp.effects~asp.mag)
 
 two_pop_contour <- filter(all_plot,
-       asp.effect%in%two_pops & 
+       asp.effects%in%two_pops & 
        #move.rate%in%move.rates &
        rho%in%rhos)
 
@@ -116,14 +123,14 @@ cols <- contour_colors(two_pop_contour,0.05,var = "lambda")
 
 ggplot(two_pop_contour,aes(x=clim.sd,y=asp.mag,z=pop.lam))+
   geom_contour_filled()+
-  facet_grid(asp.effect~move.rate, labeller = labeller(asp.effect = c( `c(-1,1)` = "-1 & 1",
+  facet_grid(asp.effects~move.rate, labeller = labeller(asp.effect = c( `c(-1,1)` = "-1 & 1",
                                                                        `c(-1.1,1)` = "-1.1 & 1",
                                                                        `c(-2,1)` = "-2 & 1" ),
                                                        move.rate = c(`0` = "0%", `0.1` = "10%", `0.2` = "20%")) )+
   scale_fill_manual(values=cols)+
   theme_classic(base_size = 18)
 
-two_pop_all <- filter(all_output,asp.effect%in%two_pops & move.rate %in% move.rates & rho %in% rhos)
+two_pop_all <- filter(all_output,asp.effects%in%two_pops & move.rate %in% move.rates & rho %in% rhos)
 
 what <- filter(two_pop_all,asp.mag <= 10 & clim.sd==1 & move.rate == 0) 
 
@@ -198,6 +205,20 @@ ggplot(out_df,aes(x=year,group = rep))+
 #   labs(title= paste("geo. mean = ",round(geoMean(out$pop.lam),3)))+
 #   geom_hline(yintercept = 1,color="red")+
 #   theme_minimal()
+
+
+cors <- all_output %>% 
+  filter(!is.na(mean.lam.corr)) %>% 
+  filter(rho==0) %>% 
+  group_by(asp.effects,asp.mag,clim.sd,move.rate) %>% 
+  summarise(mean.cor = mean(mean.lam.corr),
+            mean.lam = mean(lt.pop.lam))
+
+cor_cols <- contour_colors(cors, binwidth = 0.1, var="corr")
+
+ggplot(cors,aes(x=clim.sd,y=asp.mag,z=mean.cor))+
+  geom_contour_filled(binwidth = 0.1)+
+  facet_grid(move.rate~asp.effects)
 
 ```
 

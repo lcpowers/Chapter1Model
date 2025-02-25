@@ -36,9 +36,9 @@ summary(seeds_df)
 ```{r Scen1}
 
 # # Sim. function inputs
-burn.in.yrs <- 50
+burn.in.yrs <- 25
 sim.yrs <- 250
-reps <- 5
+reps <- 10
 clim.sds <- seq(0,20,by=1);clim.sds[clim.sds==0] <- 0.001
 asp.mags <- seq(0,20,by=1)
 rhos <- seq(0,0.2,0.2)
@@ -78,8 +78,8 @@ asp.effects <-
 # rho.i <- rho <- 0.5
 # asp.eff.i = 1
 # move.rate.i = 0
-# asp.effects <- c(-1,1)
-# move.mx <- moveMx_fun(n.subpops = 2,move.rate = move.rate.i)
+# asp.effects.i <- c(-1,1)
+# move.mx.i <- moveMx_fun(n.subpops = 2,move.rate = move.rate.i)
 
 #### Run S1 #####
 cl = makeCluster(spec = 20)
@@ -111,12 +111,22 @@ out_df <- foreach(rep = 1:reps, .combine = rbind,.packages=c("tidyverse","EnvSta
                         clim.var = var(clim),
                         pop.var = var(pop.lam),
                         lt.pop.lam = geoMean(pop.lam)) %>% 
-              mutate(asp.effect = paste(asp.effects.i,collapse = ","),
+              mutate(asp.effects = paste(asp.effects.i,collapse = ","),
                      asp.mag = asp.mag.i,
                      clim.sd = clim.sd.i,
                      rho = rho.i,
                      rep = rep,
                      move.rate = move.rate.i)
+            
+            cor_df <- filter(df,year>burn.in.yrs) %>% 
+              select(contains("s_")) %>% 
+              cor() %>%
+              as.data.frame() %>% 
+              rownames_to_column(var = "popA") %>% 
+              pivot_longer(!popA,values_to = "correlation") %>% 
+              filter(correlation!=1)
+            
+            tmp.df$mean.lam.corr = mean(cor_df$correlation)
             return(tmp.df)
             # rm(df,tmp.df,clim.sd.i,asp.mag.i,move.rate.i)
         
