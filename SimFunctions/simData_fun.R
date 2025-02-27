@@ -18,7 +18,7 @@ simulate_pop_data <- function(surv_params, growth_params, seeds,
     ssd.props <- eigen(mean.mx)$vectors[,1]/sum(eigen(mean.mx)$vectors[,1])
     ssd.scalar <- 50/ssd.props[3]
     start_pop <- round(ssd.props*ssd.scalar)
-    print(start_pop)
+    # print(start_pop)
     total_pop <- sum(start_pop)
     
     # Initialize population 
@@ -279,7 +279,7 @@ simulate_pop_data <- function(surv_params, growth_params, seeds,
                               seeds = NA,
                               clim = NA,
                               asp.mag = NA,
-                              asp.effect = NA)
+                              asp.effect = asp.effects)
     all_population_output <- rbind(all_population_output,extinct_df)
   }
   return(all_population_output)
