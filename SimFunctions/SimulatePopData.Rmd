@@ -18,7 +18,7 @@ library(parallel)
 library(doParallel)
 library(foreach)
 
-seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-01-29 21:30:11.114866.csv")
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-22 08:11:05.956603.csv")
 
 source("ModelFunctions/ParamVals.R")
 source("SimFunctions/simData_fun.R")
@@ -37,12 +37,17 @@ Very basic:
 ```{r simple_data_sim}
 
 reps <- 5
-clim.sds <- c(2,10,15)
-asp.mags <- c(2,5,10)
+clim.sds <- c(0.001,2,5,10,15)
+asp.mags <- c(2,5,10,15)
 rhos <- 0 # c(0,0.2,0.2)
 move.rates <- c(0.05,0.2,0.4)
 asp.effects <- c(-1,1)# list(c(-1,1))
 timesteps <- 20
+
+sapply(asp.mags,function(x)
+  if(!dir.exists( paste0("SimOutput/simulatedData/V1/aspmag",x) ))
+    dir.create(paste0("SimOutput/simulatedData/V1/aspmag",x)) 
+  )
 
 # rep.i = 5
 # move.rate.i = 0.05
@@ -85,8 +90,8 @@ foreach(rep.i = 1:reps,.packages=c("tidyverse","EnvStats")) %:%
                      asp.effects.grp = factor(paste(asp.effects.i,collapse=", ")) )
             
             # write_csv(df, paste0("SimOutput/simData/server/V1/",round(Sys.time()),".csv"))
-            write_csv(df,paste0("SimOutput/simData/server/V2/aspmag",asp.mag.i,"/clim",clim.sd.i,"_rho",rho.i,"_move",move.rate.i,"_rep",rep.i,".csv"))
-            rm(df,clim_vals);gc()
+            write_csv(df,paste0("SimOutput/simulatedData/V1/aspmag",asp.mag.i,"/clim",clim.sd.i,"_rho",rho.i,"_move",move.rate.i,"_rep",rep.i,".csv"))
+            rm(df,clim_vals)
             return(NULL)
             
             }
