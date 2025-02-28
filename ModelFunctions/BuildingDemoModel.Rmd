@@ -98,26 +98,29 @@ rm(i)
 
 asp.effects <-
   list(
-     c(-1, 1) #, # Simple
-    # c(-0.5,1), # Asymmetrical, 2 pop
-    # c(-0.5,-1,1) # 3 pops
+     c(-1, 1) , # Simple
+     c(-0.5,1), # Asymmetrical, 2 pop
+     c(-0.75,1),
+     c(-0.5,1.5),
+     c(-0.5,2),
+     c(-0.5,-1,1) # 3 pops
 )
 
 # n.subpops <- length(asp.effects)
 burn.in <- 50
-sim.years <- 200
+sim.years <- 250
 years <- burn.in + sim.years
 seeds <- 500
 move.rate = 0.05
 
 # Loop over these
-reps <- 1
+reps <- 10
 asp.mags <- seq(0,20,1)
 clim.sds <- seq(0,20,1)
 
 # Initiate cluster
 # stopCluster(cl)
-cl = makeCluster(2)
+cl = makeCluster(20)
 registerDoParallel(cl = cl)
 
 maxLam_by_climsd_df <- 
@@ -200,7 +203,9 @@ maxLam_by_climsd_df <-
   } # End parallel/outer loops
 stopCluster(cl)
 write_csv(maxLam_by_climsd_df,paste0("seedSearchOutput/maxLam_",round(Sys.time()),".csv"))
-
+ggplot(maxLam_by_climsd_df,aes(x=clim.sd,y=lt.lam,color=factor(asp.mag)))+
+  geom_smooth()+
+  facet_wrap(~asp.effects)
 ```
 
 ### For each microhabitat effect, find the seed number that corresponds to LT lambda being ~1 in peak conditions (peak climate SD)
@@ -210,7 +215,7 @@ burn.in <- 50
 sim.years <- 200
 years <- burn.in + sim.years
 
-seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2025-02-21 09:40:06.csv",
+seed_climsd_df <- read_csv("seedSearchOutput/maxLam_2025-02-27 19:14:51.csv",
                            col_types = cols(asp.effects=col_character())) %>% 
   group_by(asp.mag,asp.effects,clim.sd) %>% # For each clim.sd/asp.mag combination
   summarise(mean.lt.lam = mean(lt.lam),
