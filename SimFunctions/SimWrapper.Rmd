@@ -25,7 +25,7 @@ source("SimFunctions/moveMx_fun.R")
 source("SimFunctions/simfun_exp.R")
 source("ModelFunctions/ParamVals.R")
 source("ModelFunctions/subpop_mx_fun.R")
-seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-22 08:11:05.956603.csv") %>% 
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-27 20:15:48.624276.csv") %>% 
   mutate(seeds2 = floor(seeds)) %>% 
   group_by(asp.effects,asp.mag,clim.sd) %>% 
   summarize(avg.seeds = round(mean(seeds)))
@@ -66,9 +66,12 @@ move.rates <- c(0.05,0.2,0.4)
 
 asp.effects <-
   list(
-    c(-1, 1), # Simple
-    c(-0.5,1), # Asymmetrical, 2 pop
-    c(-0.5,-1,1) # 3 pops
+     c(-1, 1) , # Simple
+     c(-0.5,1), # Asymmetrical, 2 pop
+     c(-0.75,1),
+     c(-0.5,1.5),
+     c(-0.5,2),
+     c(-0.5,-1,1) # 3 pops
 )
 
 # Things needed to run sim function line by line
