@@ -64,6 +64,7 @@ simfun_exponential = function(burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, a
         start.cell = start.cells[n]
         pop.mx[start.cell:(2+start.cell),start.cell:(2+start.cell)]=subpop.mx
         
+        output_df[yr,paste0("s_",asp.effects[n])] <- Re(eigen(subpop.mx)$values[1])
         rm(subpop.mx)
         
       } # End subpop loop
@@ -95,7 +96,7 @@ simfun_exponential = function(burn.in.yrs, sim.yrs, clim.sd, move.mx, asp.mag, a
           
         }
         
-        output_df[yr,paste0("s_",asp.effects[n])] <- subpop.lam
+        # output_df[yr,paste0("s_",asp.effects[n])] <- subpop.lam
         output_df[yr,paste0("size_",asp.effects[n])] <- t1sum
         
       }
