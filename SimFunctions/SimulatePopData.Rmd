@@ -18,7 +18,7 @@ library(parallel)
 library(doParallel)
 library(foreach)
 
-seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-22 08:11:05.956603.csv")
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-27 20:15:48.624276.csv")
 
 source("ModelFunctions/ParamVals.R")
 source("SimFunctions/simData_fun.R")
@@ -38,7 +38,7 @@ Very basic:
 
 reps <- 5
 clim.sds <- c(0.001,2,5,10,15)
-asp.mags <- c(2,5,10,15)
+asp.mags <- c(1,5,10,15)
 rhos <- 0 # c(0,0.2,0.2)
 move.rates <- c(0.05,0.2,0.4)
 asp.effects <- c(-1,1)# list(c(-1,1))
@@ -102,7 +102,7 @@ stopCluster(cl)
 ### Looking at output to check it
 ```{r}
 
-sim_data_fns <- list.files("SimOutput/simData/server/V1/aspmag10",
+sim_data_fns <- list.files("SimOutput/simulatedData/V1/aspmag10",
                            pattern = "clim10_rho0_move0.05",
                            full.names = T)
 
