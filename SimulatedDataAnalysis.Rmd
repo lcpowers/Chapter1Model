@@ -1,0 +1,273 @@
+---
+title: "Simulated data analysis"
+author: "Claire Powers"
+date: "2025-03-05"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Start ##
+```{r}
+rm(list=ls())
+library(tidyverse)
+library(vroom)
+library(lme4)
+library(ggthemes)
+library(EnvStats)
+library(parallel)
+library(doParallel)
+library(foreach)
+library(Matrix)
+
+source("ModelFunctions/ParamVals.R")
+source("ModelFunctions/logit2prob.R")
+source("ModelFunctions/survival_fun.R")
+source("ModelFunctions/growth_fun.R")
+source("ModelFunctions/subpop_mx_fun.R")
+source("SimFunctions/moveMx_fun.R")
+source("SimFunctions/simData_fun.R")
+
+seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-27 20:15:48.624276.csv") %>% 
+  mutate(seeds2 = floor(seeds)) %>% 
+  group_by(asp.effects,asp.mag,clim.sd) %>% 
+  summarize(avg.seeds = round(mean(seeds)))
+```
+
+
+## For loop to process ##
+```{r}
+
+asp.effects <- c(-1,1)
+asp.mags <- c(1,5,10,15)
+clims <- c(0.001,2,5,10,15)
+move.rates <- c(0.05,0.2,0.4)
+rho <- 0
+timesteps <- 1000
+# 
+# am = asp.mags[1]
+# clim = clims[1]
+# mr = move.rates[1]
+
+cl = makeCluster(spec = 2)
+registerDoParallel(cl = cl)
+
+out_df <- foreach(am.i = 1:length(asp.mags), .combine=rbind, .packages=c("tidyverse","EnvStats","Matrix")) %:%
+  foreach(clim.i = 1:length(clims), .combine=rbind) %:%
+  foreach(mr.i = 1:length(move.rates), .combine=rbind) %dopar% {
+    
+    am <- asp.mags[am.i]
+    clim <- clims[clim.i]
+    mr = move.rates[mr.i]
+    
+    ## read in data ##
+    tmp_data_fns <- list.files(paste0("SimOutput/simulatedData/V1/aspmag",am),
+                           pattern = paste0("clim",clim,"_rho",rho,"_move",mr),
+                           full.names = T)
+
+    df <- vroom::vroom(tmp_data_fns,
+                              col_types = cols(
+                                seeds = col_double(),
+                                timestep = col_integer()
+                                )) %>%
+       filter(timestep>0) %>%
+       filter(!is.na(asp.mag)) %>%
+       mutate(region.clim = clim,
+              subpop.clim = region.clim+asp.effect*asp.mag) %>%
+       select(-clim)
+    
+    ## Fit functions ##
+    ## seeds ##
+    seed_df <- df %>% 
+      filter(start.stage=="seed") %>% 
+      mutate(size = 1)
+    
+    seeds_surv_subs <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=seed_df)
+    seeds_surv_pooled <- glm(survival_status~size + region.clim + region.clim^2, family="binomial", data=seed_df)
+    
+    ## juvs ##
+    ### j survival ###
+    juv_surv_df <- df %>% 
+      filter(start.stage=="juv") %>% 
+      mutate(size = 8) 
+    
+    juv_surv_subs <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=juv_surv_df)
+    juv_surv_pooled <- glm(survival_status~size + region.clim + region.clim, family="binomial", data=juv_surv_df)
+    
+    ### j growth ###
+    juv_grow_df <- df %>% 
+      filter(start.stage=="juv") %>% 
+      mutate(size = 8) %>% 
+      filter(survival_status==1)
+    
+    juv_grow_subs <- glm(growth_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, binomial( link = "logit" ), data=juv_grow_df)
+    juv_grow_pooled <- glm(growth_status~size + region.clim + region.clim^2, binomial( link = "logit" ), data=juv_grow_df)
+    
+    ## Flrg ##
+    ### f survival ###
+    flrg_df <- df %>% 
+      filter(start.stage=="flrg") %>% 
+      mutate(size = 10)
+        
+    flrg_surv_subs <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=flrg_df)
+    flrg_surv_pooled <- glm(survival_status~size + region.clim + region.clim^2, family="binomial", data=flrg_df)
+    
+    clim_df <- data.frame(timestep = 1:timesteps,
+                          region.clim = rnorm(timesteps,mean=0,sd=clim))
+    
+    seed_df <- expand_grid(clim_df,
+                           asp.effect = asp.effects,
+                           asp.mag = am,
+                           size = 1) %>% 
+      mutate(seed_surv_subs = stats::predict(seeds_surv_subs,newdata = .,type = "response"),
+             seed_surv_pooled = stats::predict(seeds_surv_pooled,newdata = .,type = "response")) %>% 
+      select(-size)
+    
+    juv_df <- expand_grid(clim_df,
+                          asp.effect = asp.effects,
+                          asp.mag = am,
+                          size = 8) %>% 
+      mutate(juv_surv_subs = stats::predict(juv_surv_subs,newdata = .,type = "response"),
+             juv_surv_pooled = stats::predict(juv_surv_pooled,newdata = .,type = "response"),
+             juv_grow_subs = stats::predict(juv_grow_subs,newdata = .,type = "response"),
+             juv_grow_pooled = stats::predict(juv_grow_pooled,newdata = .,type = "response")) %>% 
+      select(-size)
+    
+    flrg_df <- expand_grid(clim_df,
+                           asp.effect = asp.effects,
+                           asp.mag = am,
+                           size = 10) %>% 
+      mutate(flrg_surv_subs = stats::predict(flrg_surv_subs,newdata = .,type = "response"),
+             flrg_surv_pooled = stats::predict(flrg_surv_pooled,newdata = .,type = "response")) %>% 
+      select(-size)
+    
+    pooled_rates_df <- merge(seed_df,juv_df,by=c("timestep","region.clim","asp.effect","asp.mag")) %>% 
+      merge(.,flrg_df,by=c("timestep","region.clim","asp.effect","asp.mag")) %>% 
+      arrange(timestep) %>% 
+      select(-contains("subs"),-asp.effect) %>% 
+      unique() %>% 
+      mutate(pop.lam = NA)
+    
+    subs_rates_df <- merge(seed_df,juv_df,by=c("timestep","region.clim","asp.effect","asp.mag")) %>% 
+      merge(.,flrg_df,by=c("timestep","region.clim","asp.effect","asp.mag")) %>% 
+      arrange(timestep) %>% 
+      select(-contains("pooled")) %>% 
+      mutate(pop.lam = NA)
+    
+    # rm(clim_df,tmp_data_fns,df,seed_df,juv_surv_df,juv_grow_df,flrg_df,juv_df) 
+    # rm(seeds_surv_pooled,seeds_surv_subs,juv_surv_pooled,juv_surv_subs,juv_grow_pooled,juv_grow_subs,flrg_surv_pooled,flrg_surv_subs)
+    
+    seeds <- seeds_df$avg.seeds[seeds_df$asp.effects == paste(asp.effects,collapse = ",") & seeds_df$asp.mag==am]
+    n.subpops <- length(asp.effects)
+    move.mx <- moveMx_fun(n.subpops = n.subpops,move.rate = mr)
+    
+    total_pop <- 10000
+    pooled_t0 <- rep(total_pop/3,3)
+    subs_t0 <- rep(total_pop/(3*n.subpops),3*n.subpops)
+    
+    # only store lambdas if timestep rescaling. Currently stored in the two "rates" dataframes
+    
+    # Store output this way if not rescaling
+    # pooled_out <- matrix(nrow=timesteps,ncol=3)
+    # subs_out <- matrix(nrow=timesteps,ncol=3*n.subpops)
+    
+    for(t in 1:timesteps){
+      
+      ## Construct pooled matrix ##
+      pooled_mx_t <- matrix(data=0,nrow=3,ncol=3)
+      
+      ## seeds -> germ -> growth
+      pooled_mx_t[2,1] <- pooled_rates_df$seed_surv_pooled[pooled_rates_df$timestep==t]
+      
+      ## j surv, no grow
+      pooled_mx_t[2,2] <- pooled_rates_df$juv_surv_pooled[pooled_rates_df$timestep==t] * (1-pooled_rates_df$juv_grow_pooled[pooled_rates_df$timestep==t])
+      
+      ## j surv & grow
+      pooled_mx_t[3,2] <- pooled_rates_df$juv_surv_pooled[pooled_rates_df$timestep==t] * pooled_rates_df$juv_grow_pooled[pooled_rates_df$timestep==t]
+      
+      ## flrg surv
+      pooled_mx_t[3,3] <- pooled_rates_df$flrg_surv_pooled[pooled_rates_df$timestep==t] 
+      
+      ## fec 
+      pooled_mx_t[1,3] <- pooled_rates_df$flrg_surv_pooled[pooled_rates_df$timestep==t] * seeds * P.flr
+      pooled_mx_t
+      
+      ## Construct matrix with subpops ##
+      subs_mx_list <- list()
+
+      for(i in 1:n.subpops){
+          
+        mx_ti <- matrix(data=0,nrow=3,ncol=3)
+  
+        ## seeds -> germ -> growth
+        mx_ti[2,1] <-  subs_rates_df$seed_surv_subs[ subs_rates_df$timestep==t &  subs_rates_df$asp.effect==asp.effects[i]]
+        
+        ## j surv, no grow
+        mx_ti[2,2] <-  subs_rates_df$juv_surv_subs[ subs_rates_df$timestep==t &  subs_rates_df$asp.effect==asp.effects[i]] * 
+          (1- subs_rates_df$juv_grow_subs[ subs_rates_df$timestep==t &  subs_rates_df$asp.effect==asp.effects[i]])
+        
+        ## j surv & grow
+        mx_ti[3,2] <-  subs_rates_df$juv_surv_subs[ subs_rates_df$timestep==t &  subs_rates_df$asp.effect==asp.effects[i]] * 
+           subs_rates_df$juv_grow_subs[ subs_rates_df$timestep==t &  subs_rates_df$asp.effect==asp.effects[i]]
+        
+        ## flrg surv
+        mx_ti[3,3] <-  subs_rates_df$flrg_surv_subs[ subs_rates_df$timestep==t &  subs_rates_df$asp.effect==asp.effects[i]]
+        
+        ## fec 
+        mx_ti[1,3] <-  subs_rates_df$flrg_surv_subs[ subs_rates_df$timestep==t &  subs_rates_df$asp.effect==asp.effects[i]] * seeds * P.flr
+        subs_mx_list[[i]] <- mx_ti
+        rm(mx_ti)  
+      } ## end subpop loop
+      
+      subs_mx_t = bdiag(subs_mx_list) %>% as.matrix()
+      
+      pooled_t1 <- pooled_mx_t%*%pooled_t0
+      pooled_rates_df$pop.lam[pooled_rates_df$timestep==t] <- log(sum(pooled_t1)/sum(pooled_t0))
+      pooled_t0 <- pooled_t1/sum(pooled_t1)*total_pop
+      rm(pooled_t1)
+      
+      subs_t1 <- move.mx%*%subs_mx_t%*%subs_t0
+      subs_rates_df$pop.lam[subs_rates_df$timestep==t] <- log( sum(subs_t1) / sum(subs_t0) )
+      subs_t0 <- subs_t1/sum(subs_t1)*total_pop
+      rm(subs_t1)
+    
+      rm(pooled_mx_t,subs_mx_list,subs_mx_t)
+      
+    } ## end timestep loop
+   rm(subs_t0,pooled_t0)
+
+   ## These dataframes only make sense if tracking actual pop size
+   # subs_out_df <- as.data.frame(subs_out) %>% 
+   #   mutate(subs.pop.size = rowSums(.)) %>% 
+   #   cbind(data.frame(timestep = 1:timesteps),.) %>% 
+   #   mutate(subs.lambda = log(subs.pop.size/lag(subs.pop.size)))
+   # 
+   # pooled_out_df <- as.data.frame(pooled_out) %>% 
+   #   mutate(pooled.pop.size = rowSums(.)) %>% 
+   #   cbind(data.frame(timestep = 1:timesteps),.) %>% 
+   #   mutate(pooled.lambda = log(pooled.pop.size/lag(pooled.pop.size)))
+   
+   all_out_df <- merge(pooled_rates_df,subs_rates_df,by=c("timestep","region.clim","asp.mag"),suffixes = c(".pooled",".subs")) %>% 
+     arrange(timestep) %>% 
+     mutate(clim.sd = clim, move.rate = mr)
+   
+   return(all_out_df)
+  }
+stopCluster(cl)
+
+ggplot(filter(all_out_df,timestep>100&timestep<500),aes(x=timestep))+
+  geom_point(aes(y=pooled.pop.size),color="blue")+
+  geom_point(aes(y=subs.pop.size),color="red")+
+  theme_minimal()
+
+```
+
+- Compare log lambdas
+- Variance in log lambdas
+- Diffusion approximation for extinction risk
+- run the annual data code for asp.mags from 8 to 15
+- Read eco-evo paper
+   # Look at mean and variance of log lambda
+   # Diffusion approximation to get extinction risk based upon those
