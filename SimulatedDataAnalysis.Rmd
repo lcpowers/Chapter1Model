@@ -14,7 +14,6 @@ knitr::opts_chunk$set(echo = TRUE)
 rm(list=ls())
 library(tidyverse)
 library(vroom)
-library(lme4)
 library(ggthemes)
 library(EnvStats)
 library(parallel)
@@ -41,25 +40,28 @@ seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-27 20:15:48.624276.csv
 ```{r}
 
 asp.effects <- c(-1,1)
-asp.mags <- c(1,5,10,15)
-clims <- c(0.001,2,5,10,15)
-move.rates <- c(0.05,0.2,0.4)
+asp.mags <- c(1,5)#,10,15)
+clims <- c(0.001,2)#,5,10,15)
+move.rates <- c(0.05)#,0.2,0.4)
 rho <- 0
-timesteps <- 1000
+timesteps <- 100
 # 
-# am = asp.mags[1]
-# clim = clims[1]
-# mr = move.rates[1]
+am.i = 1
+clim.i = 1
+mr.i = 1
 
-cl = makeCluster(spec = 2)
-registerDoParallel(cl = cl)
-
-out_df <- foreach(am.i = 1:length(asp.mags), .combine=rbind, .packages=c("tidyverse","EnvStats","Matrix")) %:%
-  foreach(clim.i = 1:length(clims), .combine=rbind) %:%
-  foreach(mr.i = 1:length(move.rates), .combine=rbind) %dopar% {
+out_list <- list()
+list.ind = 0
+for(am.i in 1:length(asp.mags)){
+  list.ind <- list.ind + 1
+  am <- asp.mags[am.i]
+  
+  for(clim.i in 1:length(clims)){
     
-    am <- asp.mags[am.i]
     clim <- clims[clim.i]
+    
+    for(mr.i in 1:length(move.rates)){
+
     mr = move.rates[mr.i]
     
     ## read in data ##
@@ -80,39 +82,40 @@ out_df <- foreach(am.i = 1:length(asp.mags), .combine=rbind, .packages=c("tidyve
     
     ## Fit functions ##
     ## seeds ##
-    seed_df <- df %>% 
+    seed_lm_df <- df %>% 
       filter(start.stage=="seed") %>% 
       mutate(size = 1)
     
-    seeds_surv_subs <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=seed_df)
-    seeds_surv_pooled <- glm(survival_status~size + region.clim + region.clim^2, family="binomial", data=seed_df)
+    seeds_surv_subs_lm <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=seed_lm_df)
+    seeds_surv_pooled_lm <- glm(survival_status~size + region.clim + region.clim^2, family="binomial", data=seed_lm_df)
     
+    x = stats::predict(seeds_surv_subs_lm,newdata = seed_df,type="response")
     ## juvs ##
     ### j survival ###
-    juv_surv_df <- df %>% 
+    juv_surv_lm_df <- df %>% 
       filter(start.stage=="juv") %>% 
       mutate(size = 8) 
     
-    juv_surv_subs <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=juv_surv_df)
-    juv_surv_pooled <- glm(survival_status~size + region.clim + region.clim, family="binomial", data=juv_surv_df)
+    juv_surv_subs <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=juv_surv_lm_df)
+    juv_surv_pooled <- glm(survival_status~size + region.clim + region.clim, family="binomial", data=juv_surv_lm_df)
     
     ### j growth ###
-    juv_grow_df <- df %>% 
+    juv_grow_lm_df <- df %>% 
       filter(start.stage=="juv") %>% 
       mutate(size = 8) %>% 
       filter(survival_status==1)
     
-    juv_grow_subs <- glm(growth_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, binomial( link = "logit" ), data=juv_grow_df)
-    juv_grow_pooled <- glm(growth_status~size + region.clim + region.clim^2, binomial( link = "logit" ), data=juv_grow_df)
+    juv_grow_subs <- glm(growth_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, binomial( link = "logit" ), data=juv_grow_lm_df)
+    juv_grow_pooled <- glm(growth_status~size + region.clim + region.clim^2, binomial( link = "logit" ), data=juv_grow_lm_df)
     
     ## Flrg ##
     ### f survival ###
-    flrg_df <- df %>% 
+    flrg_lm_df <- df %>% 
       filter(start.stage=="flrg") %>% 
       mutate(size = 10)
         
-    flrg_surv_subs <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=flrg_df)
-    flrg_surv_pooled <- glm(survival_status~size + region.clim + region.clim^2, family="binomial", data=flrg_df)
+    flrg_surv_subs <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=flrg_lm_df)
+    flrg_surv_pooled <- glm(survival_status~size + region.clim + region.clim^2, family="binomial", data=flrg_lm_df)
     
     clim_df <- data.frame(timestep = 1:timesteps,
                           region.clim = rnorm(timesteps,mean=0,sd=clim))
@@ -121,8 +124,8 @@ out_df <- foreach(am.i = 1:length(asp.mags), .combine=rbind, .packages=c("tidyve
                            asp.effect = asp.effects,
                            asp.mag = am,
                            size = 1) %>% 
-      mutate(seed_surv_subs = stats::predict(seeds_surv_subs,newdata = .,type = "response"),
-             seed_surv_pooled = stats::predict(seeds_surv_pooled,newdata = .,type = "response")) %>% 
+      mutate(seed_surv_subs = stats::predict(seeds_surv_subs_lm,newdata = .,type = "response"),
+             seed_surv_pooled = stats::predict(seeds_surv_pooled_lm,newdata = .,type = "response")) %>% 
       select(-size)
     
     juv_df <- expand_grid(clim_df,
@@ -252,10 +255,12 @@ out_df <- foreach(am.i = 1:length(asp.mags), .combine=rbind, .packages=c("tidyve
    all_out_df <- merge(pooled_rates_df,subs_rates_df,by=c("timestep","region.clim","asp.mag"),suffixes = c(".pooled",".subs")) %>% 
      arrange(timestep) %>% 
      mutate(clim.sd = clim, move.rate = mr)
+
+   out_list[[i]] <- all_out_df
    
-   return(all_out_df)
-  }
-stopCluster(cl)
+  } # End move.rate loop
+  } # End clim loop
+  } # End asp.mag loop
 
 ggplot(filter(all_out_df,timestep>100&timestep<500),aes(x=timestep))+
   geom_point(aes(y=pooled.pop.size),color="blue")+
