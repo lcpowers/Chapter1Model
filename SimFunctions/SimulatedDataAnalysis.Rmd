@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Start ##
 ```{r}
-rm(list=ls())
+# rm(list=ls())
 library(tidyverse)
 library(vroom)
 library(ggthemes)
@@ -40,15 +40,16 @@ seeds_df <- read_csv("seedSearchOutput/seedSearch_2025-02-27 20:15:48.624276.csv
 ```{r}
 
 asp.effects <- c(-1,1)
-asp.mags <- 15 #c(1,5,10,15)
-clims <- c(0.001,2,5,10,15)
-move.rates <- c(0.05,0.2,0.4)
+asp.mags <- c(0,1)
+clims <- c(0.01,1)
+move.rates <- c(0.05)
 rho <- 0
 timesteps <- 1000
-# 
-# am.i = 1
-# clim.i = 1
-# mr.i = 1
+n.subpops <- length(asp.effects)
+
+am.i = 1
+clim.i = 1
+mr.i = 1
 
 out_list <- list()
 list.ind = 0
@@ -66,7 +67,7 @@ for(am.i in 1:length(asp.mags)){
       mr = move.rates[mr.i]
       
       ## read in data ##
-      tmp_data_fns <- list.files(paste0("SimOutput/simulatedData/V1/aspmag",am),
+      tmp_data_fns <- list.files(paste0("SimOutput/simulatedData/V2/aspmag",am),
                              pattern = paste0("clim",clim,"_rho",rho,"_move",mr),
                              full.names = T)
   
@@ -75,17 +76,49 @@ for(am.i in 1:length(asp.mags)){
                                   seeds = col_double(),
                                   timestep = col_integer()
                                   )) %>%
-         filter(timestep>0) %>%
          filter(!is.na(asp.mag)) %>%
          mutate(region.clim = clim,
                 subpop.clim = region.clim+asp.effect*asp.mag) %>%
          select(-clim)
-      
+
       ## Fit functions ##
       ## seeds ##
-      seed_lm_df <- df %>% 
-        filter(start.stage=="seed") %>% 
-        mutate(size = 1)
+      seed_counts_df <- df %>% 
+        group_by(timestep,region.clim,rep,asp.effect,asp.mag) %>% 
+        summarize(seed_num = sum(seeds),
+                  seeds_to_juvs = sum(start.stage=="seed" & end.stage=="juv"),
+                  .groups="drop")
+      
+      seed_lm_list <- list()
+      seed_lm_list_ind <- 1
+      for(r in 1:max(df$rep)){
+        for(n in 1:n.subpops){
+          ae.n = asp.effects[n]
+          tmp <- seed_counts_df %>% filter(rep == r & asp.effect==ae.n)
+          for(ts in 0:(max(tmp$timestep)-1) ){
+            
+            seeds_t0 <- tmp$seed_num[tmp$timestep==ts]
+            seeds_to_juvs <- tmp$seeds_to_juvs[tmp$timestep==(ts+1)]
+              
+            dt.out <- data.table(
+              rep = r,
+              timestep = ts+1,
+              start.stage = rep("seed",seeds_t0),
+              size=1,
+              survival_status = c(rep(1,seeds_to_juvs), rep(0, (seeds_t0 - seeds_to_juvs) )),
+              region.clim = tmp$region.clim[tmp$timestep==ts+1],
+              asp.mag = unique(tmp$asp.mag),
+              asp.effect = ae.n)
+            
+            seed_lm_list[[seed_lm_list_ind]] <- dt.out
+            seed_lm_list_ind <- seed_lm_list_ind + 1
+            rm(dt.out,seeds_t0,seeds_to_juvs)
+          } # end timestep loop
+        } # End asp.effect loop
+      } # end rep loop
+      
+      seed_lm_df <- data.table::rbindlist(seed_lm_list)
+      rm(seed_lm_list,tmp,ae.n,seed_lm_list_ind,seed_counts_df)
       
       seeds_surv_subs_lm <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=seed_lm_df)
       seeds_surv_pooled_lm <- glm(survival_status~size + region.clim + region.clim^2, family="binomial", data=seed_lm_df)
@@ -97,7 +130,7 @@ for(am.i in 1:length(asp.mags)){
         mutate(size = 8) 
       
       juv_surv_subs_lm <- glm(survival_status~size + (region.clim + asp.mag*asp.effect) + (region.clim + asp.mag*asp.effect)^2, family="binomial", data=juv_surv_lm_df)
-      juv_surv_pooled_lm <- glm(survival_status~size + region.clim + region.clim, family="binomial", data=juv_surv_lm_df)
+      juv_surv_pooled_lm <- glm(survival_status~size + region.clim + region.clim^2, family="binomial", data=juv_surv_lm_df)
       
       ### j growth ###
       juv_grow_lm_df <- df %>% 
@@ -125,7 +158,7 @@ for(am.i in 1:length(asp.mags)){
                              asp.mag = am,
                              size = 1) %>% 
         mutate(seed_surv_subs = stats::predict(seeds_surv_subs_lm,newdata = .,type = "response"),
-               seed_surv_pooled = stats::predict(seeds_surv_pooled_lm,newdata = .,type = "response")) %>% 
+               seed_surv_pooled = stats::predict(seeds_surv_pooled_lm,newdata = .,type = "response")) %>%
         select(-size)
       
       juv_df <- expand_grid(clim_df,
@@ -136,7 +169,7 @@ for(am.i in 1:length(asp.mags)){
                juv_surv_pooled = stats::predict(juv_surv_pooled_lm,newdata = .,type = "response"),
                juv_grow_subs = stats::predict(juv_grow_subs_lm,newdata = .,type = "response"),
                juv_grow_pooled = stats::predict(juv_grow_pooled_lm,newdata = .,type = "response")) %>% 
-        select(-size)
+        select(.,-size)
       
       flrg_df <- expand_grid(clim_df,
                              asp.effect = asp.effects,
@@ -264,21 +297,32 @@ for(am.i in 1:length(asp.mags)){
   } # End clim loop
   } # End asp.mag loop
 
-all_out_df2 <- data.table::rbindlist(out_list)
 
-lambda_df <- all_out_df2 %>%
+all_out_df <- data.table::rbindlist(out_list)
+
+
+lambda_df <- all_out_df %>%
   unique() %>% 
   select(asp.mag,move.rate,clim.sd,pop.lam.subs,pop.lam.pooled) %>% 
   unique() %>% 
   group_by(asp.mag,move.rate,clim.sd) %>% 
   summarize(pooled.mean.lam = mean(pop.lam.pooled),
-            subs.mean.lam = mean(pop.lam.subs))
+            subs.mean.lam = mean(pop.lam.subs),
+            pooled.var.lam = var(pop.lam.pooled),
+            subs.var.lam = var(pop.lam.subs))
   
 ggplot(lambda_df,aes(x=clim.sd))+
   geom_point(aes(y=pooled.mean.lam,color="pooled"))+
   geom_line(aes(y=pooled.mean.lam,color="pooled"))+
   geom_point(aes(y=subs.mean.lam,color="subs"))+
   geom_line(aes(y=subs.mean.lam,color="subs"))+
+  facet_grid(move.rate~asp.mag)
+
+ggplot(lambda_df,aes(x=clim.sd))+
+  geom_point(aes(y=pooled.var.lam,color="pooled"))+
+  geom_line(aes(y=pooled.var.lam,color="pooled"))+
+  geom_point(aes(y=subs.var.lam,color="subs"))+
+  geom_line(aes(y=subs.var.lam,color="subs"))+
   facet_grid(move.rate~asp.mag)
 
 ```
